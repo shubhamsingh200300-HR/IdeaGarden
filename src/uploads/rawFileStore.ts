@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import { decryptFromFile, encryptToFile } from "./encryptedFile.js";
 
-export type SourceType = "annual-survey" | "pulse-survey" | "exit-data";
+export const SOURCE_TYPES = ["annual-survey", "pulse-survey", "exit-data"] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
 
 /**
  * On-prem, per-team-scoped raw file storage with encryption at rest

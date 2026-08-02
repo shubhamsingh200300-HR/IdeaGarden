@@ -52,3 +52,24 @@ export function loadStorageConfig(): StorageConfig {
   }
   return { baseDir: process.env.STORAGE_DIR ?? "./data", encryptionKey };
 }
+
+/**
+ * LLM strategy is anonymize-on-prem-then-call-cloud-LLM (technical-
+ * architecture-spec.md Section 2): Claude Enterprise or Gemini Enterprise.
+ * The exact Enterprise endpoint shape/auth mechanism is not confirmed -
+ * this assumes a simple bearer-token JSON API. Verify against whichever
+ * provider is actually approved before relying on this in production.
+ */
+export interface LlmConfig {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+}
+
+export function loadLlmConfig(): LlmConfig {
+  return {
+    endpoint: requireEnv("LLM_ENDPOINT"),
+    apiKey: requireEnv("LLM_API_KEY"),
+    model: requireEnv("LLM_MODEL"),
+  };
+}

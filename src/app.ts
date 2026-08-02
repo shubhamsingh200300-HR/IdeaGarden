@@ -11,6 +11,7 @@ import type { IngestDeps } from "./uploads/ingestUpload.js";
 import { buildRequestRoutes } from "./requests/requestRoutes.js";
 import { buildManagerRoutes } from "./requests/managerRoutes.js";
 import type { RequestIntakeStore } from "./requests/requestIntakeStore.js";
+import { buildAnalysisRoutes, type AnalysisDeps } from "./analysis/analysisRoutes.js";
 
 export interface AppDeps {
   oidcClient: OidcClient;
@@ -28,6 +29,8 @@ export interface AppDeps {
   requestIntakeStore?: RequestIntakeStore;
   /** Omit to use RequestIntakeStore's own default manager-invite expiry (7 days). */
   managerInviteExpiryMs?: number;
+  /** Omit to run without the signal-analysis endpoint mounted (e.g. tests that don't need it). */
+  analysisDeps?: AnalysisDeps;
 }
 
 export function buildApp({
@@ -38,6 +41,7 @@ export function buildApp({
   ingestDeps,
   requestIntakeStore,
   managerInviteExpiryMs,
+  analysisDeps,
 }: AppDeps): Express {
   const app = express();
 
@@ -62,6 +66,9 @@ export function buildApp({
   if (requestIntakeStore) {
     app.use("/api/teams", buildRequestRoutes(requestIntakeStore, teamMappingStore, managerInviteExpiryMs));
     app.use("/manager/requests", buildManagerRoutes(requestIntakeStore));
+  }
+  if (analysisDeps) {
+    app.use("/api/teams", buildAnalysisRoutes(analysisDeps, teamMappingStore));
   }
   app.use("/", buildPagesRouter(teamMappingStore, devLoginEnabled));
 

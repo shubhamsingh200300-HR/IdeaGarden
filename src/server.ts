@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { loadKnoxConfig, loadSessionSecret, loadStorageConfig } from "./config.js";
+import { loadKnoxConfig, loadLlmConfig, loadSessionSecret, loadStorageConfig } from "./config.js";
 import { KnoxOidcClient } from "./auth/knoxOidcClient.js";
 import { buildApp } from "./app.js";
 import { InMemoryTeamMappingStore } from "./teams/teamMappingStore.js";
@@ -8,6 +8,7 @@ import { EncryptedFileSystemStore } from "./uploads/rawFileStore.js";
 import { DerivedDataStore } from "./uploads/derivedDataStore.js";
 import { FileAuditLog } from "./uploads/auditLog.js";
 import { RequestIntakeStore } from "./requests/requestIntakeStore.js";
+import { EnterpriseLlmClient } from "./analysis/enterpriseLlmClient.js";
 
 // Swapping InMemoryTeamMappingStore for a real on-prem-backed store is a
 // separate, later concern — this ticket establishes the interface
@@ -26,6 +27,11 @@ const requestIntakeStore = new RequestIntakeStore(
   storageConfig.encryptionKey,
 );
 
+const analysisDeps = {
+  derivedDataStore: ingestDeps.derivedDataStore,
+  llmClient: new EnterpriseLlmClient(loadLlmConfig()),
+};
+
 const port = Number(process.env.PORT ?? 3000);
 const managerInviteExpiryMs = process.env.MANAGER_INVITE_EXPIRY_MS
   ? Number(process.env.MANAGER_INVITE_EXPIRY_MS)
@@ -39,6 +45,7 @@ const app = buildApp({
   ingestDeps,
   requestIntakeStore,
   managerInviteExpiryMs,
+  analysisDeps,
 });
 
 app.listen(port, () => {
