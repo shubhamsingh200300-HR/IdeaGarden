@@ -4,6 +4,7 @@ import { buildAuthRouter } from "./auth/authRoutes.js";
 import type { OidcClient } from "./auth/oidcClient.js";
 import { buildTeamsRouter } from "./teams/teamsRoutes.js";
 import type { TeamMappingStore } from "./teams/teamMappingStore.js";
+import { buildPagesRouter } from "./pages/pagesRoutes.js";
 
 export interface AppDeps {
   oidcClient: OidcClient;
@@ -25,6 +26,7 @@ export function buildApp({ oidcClient, teamMappingStore, sessionSecret }: AppDep
 
   app.use("/auth", buildAuthRouter(oidcClient));
   app.use("/api/teams", buildTeamsRouter(teamMappingStore));
+  app.use("/", buildPagesRouter(teamMappingStore));
 
   return app;
 }

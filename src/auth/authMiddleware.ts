@@ -14,3 +14,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
   next();
 }
+
+/** Same guard as requireAuth, for HTML pages: redirects to the login page instead of a JSON 401. */
+export function requireAuthPage(req: Request, res: Response, next: NextFunction): void {
+  if (!req.session.hrbpId) {
+    res.redirect("/");
+    return;
+  }
+  next();
+}
