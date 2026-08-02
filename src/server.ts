@@ -1,5 +1,11 @@
 import { join } from "node:path";
-import { loadKnoxConfig, loadLlmConfig, loadSessionSecret, loadStorageConfig } from "./config.js";
+import {
+  loadIdeaGenerationLlmConfig,
+  loadKnoxConfig,
+  loadLlmConfig,
+  loadSessionSecret,
+  loadStorageConfig,
+} from "./config.js";
 import { KnoxOidcClient } from "./auth/knoxOidcClient.js";
 import { buildApp } from "./app.js";
 import { InMemoryTeamMappingStore } from "./teams/teamMappingStore.js";
@@ -9,6 +15,9 @@ import { DerivedDataStore } from "./uploads/derivedDataStore.js";
 import { FileAuditLog } from "./uploads/auditLog.js";
 import { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 import { EnterpriseLlmClient } from "./analysis/enterpriseLlmClient.js";
+import { loadCorpus } from "./corpus/loadCorpus.js";
+import { OnPremVectorStore } from "./corpus/vectorStore.js";
+import { EnterpriseIdeaLlmClient } from "./generation/enterpriseIdeaLlmClient.js";
 
 // Swapping InMemoryTeamMappingStore for a real on-prem-backed store is a
 // separate, later concern — this ticket establishes the interface
@@ -27,9 +36,18 @@ const requestIntakeStore = new RequestIntakeStore(
   storageConfig.encryptionKey,
 );
 
+const themeLlmClient = new EnterpriseLlmClient(loadLlmConfig());
 const analysisDeps = {
   derivedDataStore: ingestDeps.derivedDataStore,
-  llmClient: new EnterpriseLlmClient(loadLlmConfig()),
+  llmClient: themeLlmClient,
+};
+
+const generationDeps = {
+  requestIntakeStore,
+  derivedDataStore: ingestDeps.derivedDataStore,
+  vectorStore: new OnPremVectorStore(loadCorpus()),
+  ideaLlmClient: new EnterpriseIdeaLlmClient(loadIdeaGenerationLlmConfig()),
+  themeLlmClient,
 };
 
 const port = Number(process.env.PORT ?? 3000);
@@ -46,6 +64,7 @@ const app = buildApp({
   requestIntakeStore,
   managerInviteExpiryMs,
   analysisDeps,
+  generationDeps,
 });
 
 app.listen(port, () => {

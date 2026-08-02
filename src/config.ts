@@ -73,3 +73,12 @@ export function loadLlmConfig(): LlmConfig {
     model: requireEnv("LLM_MODEL"),
   };
 }
+
+/** Same provider/credentials as LlmConfig, different task/endpoint (idea generation vs. theme extraction). */
+export function loadIdeaGenerationLlmConfig(): LlmConfig {
+  return {
+    endpoint: requireEnv("LLM_IDEA_GENERATION_ENDPOINT"),
+    apiKey: requireEnv("LLM_API_KEY"),
+    model: requireEnv("LLM_MODEL"),
+  };
+}
