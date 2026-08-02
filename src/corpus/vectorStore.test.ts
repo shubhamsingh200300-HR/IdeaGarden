@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest";
+import { OnPremVectorStore } from "./vectorStore.js";
+import type { CorpusEntry } from "./parseBenchmarkCorpus.js";
+
+function entry(overrides: Partial<CorpusEntry>): CorpusEntry {
+  return {
+    id: "id",
+    company: "Co",
+    initiative: "Initiative",
+    primarySignal: "autonomy",
+    secondarySignals: [],
+    structure: "",
+    impactEvidence: "",
+    sources: [],
+    ...overrides,
+  };
+}
+
+describe("OnPremVectorStore", () => {
+  const entries: CorpusEntry[] = [
+    entry({
+      id: "hackathon",
+      primarySignal: "autonomy",
+      secondarySignals: ["recognition"],
+      structure: "An annual 24-hour hackathon where engineers build side projects.",
+    }),
+    entry({
+      id: "unlimited-pto",
+      primarySignal: "autonomy",
+      secondarySignals: [],
+      structure: "Employees take vacation whenever they want with no formal tracking.",
+    }),
+    entry({
+      id: "kudos",
+      primarySignal: "recognition",
+      secondarySignals: ["belonging"],
+      structure: "Peer-to-peer recognition program with kudos and small awards.",
+    }),
+    entry({
+      id: "mentorship",
+      primarySignal: "growth/mastery",
+      secondarySignals: ["career progression clarity"],
+      structure: "Mentorship program pairing junior and senior engineers.",
+    }),
+  ];
+  const store = new OnPremVectorStore(entries);
+
+  it("only returns entries tagged with the queried signal (primary or secondary)", () => {
+    const results = store.retrieveBySignal("recognition", "team celebration");
+    const ids = results.map((r) => r.id);
+
+    expect(ids).toContain("hackathon"); // tagged via secondary
+    expect(ids).toContain("kudos"); // tagged via primary
+    expect(ids).not.toContain("unlimited-pto");
+    expect(ids).not.toContain("mentorship");
+  });
+
+  it("is case-insensitive when matching the signal", () => {
+    const results = store.retrieveBySignal("Recognition", "anything");
+    expect(results.map((r) => r.id)).toContain("kudos");
+  });
+
+  it("ranks same-signal entries by similarity to the query text", () => {
+    const results = store.retrieveBySignal("autonomy", "annual hackathon building side projects");
+
+    expect(results[0].id).toBe("hackathon");
+  });
+
+  it("degrades gracefully for a signal with no matching entries", () => {
+    const results = store.retrieveBySignal("purpose/impact visibility", "anything");
+    expect(results).toEqual([]);
+  });
+
+  it("returns just the one entry for a signal with only one match", () => {
+    const results = store.retrieveBySignal("growth/mastery", "anything");
+    expect(results.map((r) => r.id)).toEqual(["mentorship"]);
+  });
+
+  it("respects a topK limit", () => {
+    const results = store.retrieveBySignal("autonomy", "vacation and hackathons", 1);
+    expect(results).toHaveLength(1);
+  });
+});
