@@ -4,7 +4,11 @@
 
 **Blocked by:** 04 (Request intake: manager context & constraints) — done; this changes its mechanism, not its stored shape (`GenerationRequest` scoped by team is still what ticket 06 reads).
 
-**Status:** ready-for-agent
+**Status:** implemented (commit 47b25e1)
+
+**Implementation note:** built as `src/requests/*` — `RequestIntakeStore`'s pending→submitted lifecycle (`createInvite`/`checkToken`/`submitByToken`), HRBP-facing invite/latest routes, and public token-gated manager routes. 35 tests, all passing.
+
+**Code review caught a confirmed, exploitable path-traversal vulnerability** — the token (fully attacker-controlled on a public route) was used directly in a filesystem path join with no format validation; a crafted token could reach and decrypt an arbitrary sibling file. Proven with a test (plants a decoy file at the traversal target, asserts it's still rejected) and fixed by validating the token's exact expected shape before any filesystem use, plus a fail-safe try/catch as defense in depth. Also fixed: the "configurable expiry" checkbox was an unused parameter with no real config path — now wired through `MANAGER_INVITE_EXPIRY_MS`; and added a genuine end-to-end HTTP test since prior tests exercised the store and HTTP layer separately but never the full chain.
 
 - [ ] HRBP triggers an invite for one of their mapped teams (e.g. `POST /api/teams/:teamId/requests/invite`); the platform creates a `pending` request and returns a link/token for the HRBP to send to the manager out-of-band (email/Slack — sending it is not this platform's job)
 - [ ] The token is cryptographically random, single-use, and expires after a reasonable window (default 7 days; make it configurable, don't hardcode as unchangeable)
