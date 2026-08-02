@@ -4,7 +4,11 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** implemented (commit 61802bd) — see note below on one open flag
+
+**Implementation note:** built as `src/app.ts` (Express) with `src/auth/*` (Knox OIDC client, session-based auth middleware, login/callback routes) and `src/teams/*` (team mapping store, file-backed seed via `TEAM_MAPPINGS_PATH`, protected routes). 23 tests passing, typecheck clean. Went through `/code-review`: fixed a missing ID-token issuer check and a hardcoded-empty mapping seed before commit.
+
+**Open flag — needs a decision:** the "authenticated dashboard" criterion below was implemented as a JSON API endpoint (`GET /api/teams`), not a rendered UI. Confirm whether a real UI is wanted here or in a later ticket.
 
 - [ ] HRBP authenticates via Samsung Knox using OIDC; a successful login reaches an authenticated dashboard
 - [ ] **Caveat to verify first:** this assumes Knox supports OIDC for this integration. Confirm with whoever owns Knox integration before building — if Knox only exposes SAML, swap the auth flow accordingly and update this ticket
