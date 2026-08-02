@@ -4,7 +4,13 @@
 
 **Blocked by:** 03 (Survey ingestion pipeline)
 
-**Status:** ready-for-agent
+**Status:** implemented (commit 65123c8)
+
+**Implementation note:** built as `src/analysis/*` — group-size-5 structured rollup, an LLM client (real + fake) for free-text theme/sentiment extraction, orchestration excluding quarantined rows end-to-end, and `GET /api/teams/:teamId/analysis`. 24 tests, all passing.
+
+**Code review verified in code (not assumed):** quarantined rows never reach either the structured breakdown or the LLM call, proven with a test that a quarantined row's value doesn't leak even into the rollup bucket; only aggregate label/count/sentiment reach the response, no raw quote or individual value. One smell fixed: a hand-duplicated source-type list derived from a shared constant instead.
+
+**Known deviations, disclosed:** small groups always roll up into one generic "Other" bucket rather than a semantically-adjacent "next broader group" — no fixed schema means there's no way to infer what's adjacent for an arbitrary column. Structured breakdowns and free-text themes are independent lists, not cross-tabulated to the same slice.
 
 - [ ] Structured columns are sliced/filtered by whatever dimensions the upload actually contains (no fixed dimension list)
 - [ ] Any slice smaller than 5 people is rolled up into the next-broader group rather than shown as-is or suppressed outright
