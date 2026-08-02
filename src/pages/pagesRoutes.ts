@@ -32,7 +32,10 @@ export function buildPagesRouter(
       teams.length === 0
         ? "<p>You have no teams assigned yet.</p>"
         : `<ul>${teams
-            .map((team) => `<li>${escapeHtml(team.teamName)}</li>`)
+            .map(
+              (team) =>
+                `<li><a href="/dashboard/teams/${escapeHtml(team.teamId)}/ideas">${escapeHtml(team.teamName)}</a></li>`,
+            )
             .join("")}</ul>`;
 
     res.send(layout("Dashboard", `<h1>Your teams</h1>${teamsList}`));

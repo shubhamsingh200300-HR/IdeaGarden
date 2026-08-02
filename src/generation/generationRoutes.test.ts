@@ -12,6 +12,7 @@ import { DerivedDataStore } from "../uploads/derivedDataStore.js";
 import { OnPremVectorStore } from "../corpus/vectorStore.js";
 import type { CorpusEntry } from "../corpus/parseBenchmarkCorpus.js";
 import type { LlmClient, Theme } from "../analysis/llmClient.js";
+import { GeneratedIdeasStore } from "./generatedIdeasStore.js";
 import type { GeneratedIdeaDraft, IdeaGenerationInput, IdeaLlmClient } from "./ideaLlmClient.js";
 
 class FakeOidcClient implements OidcClient {
@@ -81,6 +82,7 @@ describe("POST /:teamId/ideas/generate", () => {
     ]);
     const requestIntakeStore = new RequestIntakeStore(join(dir, "requests"), key);
     const derivedDataStore = new DerivedDataStore(join(dir, "derived"), key);
+    const generatedIdeasStore = new GeneratedIdeasStore(join(dir, "generated"), key);
     const themeLlmClient = new FakeThemeLlmClient([
       { label: "career progression clarity", count: 5, sentiment: "negative" },
     ]);
@@ -94,9 +96,16 @@ describe("POST /:teamId/ideas/generate", () => {
       devLoginEnabled: true,
       requestIntakeStore,
       analysisDeps: { derivedDataStore, llmClient: themeLlmClient },
-      generationDeps: { requestIntakeStore, derivedDataStore, vectorStore, ideaLlmClient, themeLlmClient },
+      generationDeps: {
+        requestIntakeStore,
+        derivedDataStore,
+        generatedIdeasStore,
+        vectorStore,
+        ideaLlmClient,
+        themeLlmClient,
+      },
     });
-    return { app, requestIntakeStore, derivedDataStore };
+    return { app, requestIntakeStore, derivedDataStore, generatedIdeasStore };
   }
 
   async function loginAs(agent: ReturnType<typeof request.agent>, email: string) {
@@ -208,6 +217,7 @@ describe("POST /:teamId/ideas/generate", () => {
     ]);
     const requestIntakeStore = new RequestIntakeStore(join(dir, "requests"), key);
     const derivedDataStore = new DerivedDataStore(join(dir, "derived"), key);
+    const generatedIdeasStore = new GeneratedIdeasStore(join(dir, "generated"), key);
     const themeLlmClient = new FakeThemeLlmClient([
       { label: "career progression clarity", count: 5, sentiment: "negative" },
     ]);
@@ -224,6 +234,7 @@ describe("POST /:teamId/ideas/generate", () => {
       generationDeps: {
         requestIntakeStore,
         derivedDataStore,
+        generatedIdeasStore,
         vectorStore,
         ideaLlmClient: failingIdeaLlmClient,
         themeLlmClient,

@@ -79,6 +79,17 @@ describe("GET /dashboard", () => {
     expect(res.text).toContain("Mobile Camera");
   });
 
+  it("links each team to its generated-ideas page", async () => {
+    const { app } = buildTestApp();
+    const agent = request.agent(app);
+    await loginAs(agent, "code-for-hrbp-1");
+
+    const res = await agent.get("/dashboard");
+
+    expect(res.text).toContain("/dashboard/teams/team-a/ideas");
+    expect(res.text).toContain("/dashboard/teams/team-b/ideas");
+  });
+
   it("shows an empty state for an HRBP with no mapped teams", async () => {
     const { app } = buildTestApp();
     const agent = request.agent(app);

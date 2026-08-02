@@ -12,7 +12,9 @@ import { buildRequestRoutes } from "./requests/requestRoutes.js";
 import { buildManagerRoutes } from "./requests/managerRoutes.js";
 import type { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 import { buildAnalysisRoutes, type AnalysisDeps } from "./analysis/analysisRoutes.js";
-import { buildGenerationRoutes, type GenerationRouteDeps } from "./generation/generationRoutes.js";
+import { buildGenerationRoutes } from "./generation/generationRoutes.js";
+import { buildIdeaPagesRoutes } from "./generation/ideaPagesRoutes.js";
+import type { RunGenerationDeps } from "./generation/runGeneration.js";
 
 export interface AppDeps {
   oidcClient: OidcClient;
@@ -32,8 +34,8 @@ export interface AppDeps {
   managerInviteExpiryMs?: number;
   /** Omit to run without the signal-analysis endpoint mounted (e.g. tests that don't need it). */
   analysisDeps?: AnalysisDeps;
-  /** Omit to run without the idea-generation endpoint mounted (e.g. tests that don't need it). */
-  generationDeps?: GenerationRouteDeps;
+  /** Omit to run without the idea-generation endpoints mounted (e.g. tests that don't need them). */
+  generationDeps?: RunGenerationDeps;
 }
 
 export function buildApp({
@@ -76,6 +78,7 @@ export function buildApp({
   }
   if (generationDeps) {
     app.use("/api/teams", buildGenerationRoutes(generationDeps, teamMappingStore));
+    app.use("/dashboard", buildIdeaPagesRoutes(generationDeps, teamMappingStore));
   }
   app.use("/", buildPagesRouter(teamMappingStore, devLoginEnabled));
 

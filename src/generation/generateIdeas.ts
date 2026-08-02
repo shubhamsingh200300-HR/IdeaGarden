@@ -79,17 +79,26 @@ function toPublicCard(idea: GeneratedIdeaDraft): PublicIdeaCard {
  * are strengths, not problems to address) yields one grounded candidate
  * idea. Every candidate is gated before ranking; only gate-passing
  * candidates are ranked and the top 3-5 returned.
+ *
+ * `additionalContext` supports ticket 07's regenerate-with-adjustment
+ * flow: the HRBP can nudge a fresh generation attempt without the
+ * manager needing to resubmit through ticket 10's invite flow again.
+ * It's blended in for this call only, never persisted to the stored
+ * request - the manager's original submission (ticket 10) remains the
+ * record of truth.
  */
 export async function generateIdeas(
   request: GenerationRequest,
   analysis: SignalAnalysisSummary,
   deps: GenerateIdeasDeps,
+  additionalContext?: string,
 ): Promise<GenerationResult> {
   const candidateSignals = analysis.freeTextThemes.filter(
     (theme) => theme.sentiment === "negative" || theme.sentiment === "mixed",
   );
 
-  const scrubbedContext = scrubForExternalLlm(request.context);
+  const combinedContext = additionalContext ? `${request.context} ${additionalContext}` : request.context;
+  const scrubbedContext = scrubForExternalLlm(combinedContext);
   const scrubbedConstraints = scrubConstraints(request.constraints);
 
   const scored: { idea: GeneratedIdeaDraft; score: number }[] = [];

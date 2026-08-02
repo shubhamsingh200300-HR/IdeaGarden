@@ -236,6 +236,43 @@ describe("generateIdeas", () => {
     expect(ideaLlmClient.receivedInputs[0].context).not.toContain("Sarah");
   });
 
+  it("blends in optional additional context for a regeneration attempt, without requiring a brand-new request", async () => {
+    const analysis: SignalAnalysisSummary = {
+      teamId: "team-a",
+      analyzedAt: "2026-01-01T00:00:00.000Z",
+      structuredDimensions: [],
+      freeTextThemes: [{ column: "Comments", label: "career progression clarity", count: 5, sentiment: "negative" }],
+    };
+    const ideaLlmClient = new FakeIdeaLlmClient({ "career progression clarity": draft() });
+    const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
+
+    await generateIdeas(request(), analysis, { vectorStore, ideaLlmClient }, "Also, the team is fully remote now.");
+
+    expect(ideaLlmClient.receivedInputs[0].context).toContain("Engineers say promotion criteria feel arbitrary.");
+    expect(ideaLlmClient.receivedInputs[0].context).toContain("Also, the team is fully remote now.");
+  });
+
+  it("scrubs PII from the additional context override too, same as the original context", async () => {
+    const analysis: SignalAnalysisSummary = {
+      teamId: "team-a",
+      analyzedAt: "2026-01-01T00:00:00.000Z",
+      structuredDimensions: [],
+      freeTextThemes: [{ column: "Comments", label: "career progression clarity", count: 5, sentiment: "negative" }],
+    };
+    const ideaLlmClient = new FakeIdeaLlmClient({ "career progression clarity": draft() });
+    const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
+
+    await generateIdeas(
+      request(),
+      analysis,
+      { vectorStore, ideaLlmClient },
+      "Ping John Smith for details.",
+    );
+
+    expect(ideaLlmClient.receivedInputs[0].context).not.toContain("John Smith");
+    expect(ideaLlmClient.receivedInputs[0].context).toContain("[NAME]");
+  });
+
   it("retrieves corpus examples scoped to the target signal and passes them to the LLM client", async () => {
     const analysis: SignalAnalysisSummary = {
       teamId: "team-a",

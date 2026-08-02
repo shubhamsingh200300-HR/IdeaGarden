@@ -18,6 +18,7 @@ import { EnterpriseLlmClient } from "./analysis/enterpriseLlmClient.js";
 import { loadCorpus } from "./corpus/loadCorpus.js";
 import { OnPremVectorStore } from "./corpus/vectorStore.js";
 import { EnterpriseIdeaLlmClient } from "./generation/enterpriseIdeaLlmClient.js";
+import { GeneratedIdeasStore } from "./generation/generatedIdeasStore.js";
 
 // Swapping InMemoryTeamMappingStore for a real on-prem-backed store is a
 // separate, later concern — this ticket establishes the interface
@@ -45,6 +46,7 @@ const analysisDeps = {
 const generationDeps = {
   requestIntakeStore,
   derivedDataStore: ingestDeps.derivedDataStore,
+  generatedIdeasStore: new GeneratedIdeasStore(join(storageConfig.baseDir, "generated-ideas"), storageConfig.encryptionKey),
   vectorStore: new OnPremVectorStore(loadCorpus()),
   ideaLlmClient: new EnterpriseIdeaLlmClient(loadIdeaGenerationLlmConfig()),
   themeLlmClient,

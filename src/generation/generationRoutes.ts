@@ -1,60 +1,55 @@
-import { Router } from "express";
+import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { requireAuth } from "../auth/authMiddleware.js";
 import { requireTeamAuthorization } from "../teams/requireTeamAuthorization.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
-import type { RequestIntakeStore } from "../requests/requestIntakeStore.js";
-import type { DerivedDataStore } from "../uploads/derivedDataStore.js";
-import type { OnPremVectorStore } from "../corpus/vectorStore.js";
-import type { LlmClient } from "../analysis/llmClient.js";
-import { analyzeSignals } from "../analysis/signalAnalysis.js";
-import type { IdeaLlmClient } from "./ideaLlmClient.js";
-import { generateIdeas } from "./generateIdeas.js";
+import { runGeneration, type RunGenerationDeps } from "./runGeneration.js";
 
-export interface GenerationRouteDeps {
-  requestIntakeStore: RequestIntakeStore;
-  derivedDataStore: DerivedDataStore;
-  vectorStore: OnPremVectorStore;
-  ideaLlmClient: IdeaLlmClient;
-  /** Same theme-extraction client ticket 05's analysis route uses. */
-  themeLlmClient: LlmClient;
+const jsonBody = express.json();
+
+/** Scoped (not app-wide) so an unauthorized request never gets its body parsed - same reasoning as uploadRoutes.ts's multer ordering and requestRoutes.ts's scoped express.json(). */
+function parseJsonBody(req: Request, res: Response, next: NextFunction): void {
+  jsonBody(req, res, (err: unknown) => {
+    if (err) {
+      res.status(400).json({ error: "malformed request body" });
+      return;
+    }
+    next();
+  });
 }
 
 export function buildGenerationRoutes(
-  deps: GenerationRouteDeps,
+  deps: RunGenerationDeps,
   teamMappingStore: TeamMappingStore,
 ): Router {
   const router = Router();
   const authorize = requireTeamAuthorization(teamMappingStore);
 
-  router.post("/:teamId/ideas/generate", requireAuth, authorize, async (req, res) => {
+  router.post("/:teamId/ideas/generate", requireAuth, authorize, parseJsonBody, async (req, res) => {
     const teamId = String(req.params.teamId);
+    const additionalContext =
+      typeof req.body?.additionalContext === "string" ? req.body.additionalContext : undefined;
 
-    const generationRequest = deps.requestIntakeStore.getReadyForGeneration(teamId);
-    if (!generationRequest) {
-      res.status(409).json({ error: "no submitted manager input yet for this team" });
-      return;
-    }
+    const outcome = await runGeneration(deps, teamId, additionalContext);
 
-    const processed = deps.derivedDataStore.getLatest(teamId, "annual-survey");
-    if (!processed) {
-      res.status(409).json({ error: "no survey data ingested yet for this team" });
-      return;
-    }
-
-    try {
-      const analysis = await analyzeSignals(processed, deps.themeLlmClient);
-      const result = await generateIdeas(generationRequest, analysis, {
-        vectorStore: deps.vectorStore,
-        ideaLlmClient: deps.ideaLlmClient,
-      });
-
-      res.status(200).json(result);
-    } catch {
+    if (outcome.status === "not-ready") {
+      res.status(409).json({ error: outcome.reason });
+    } else if (outcome.status === "error") {
       // Don't leak internal error detail (could include LLM response
       // bodies) to the client; 502 signals an upstream dependency failure
       // rather than a bug in this request itself.
       res.status(502).json({ error: "idea generation failed - the upstream analysis or generation service errored" });
+    } else {
+      res.status(200).json(outcome.result);
     }
+  });
+
+  router.get("/:teamId/ideas/latest", requireAuth, authorize, (req, res) => {
+    const latest = deps.generatedIdeasStore.getLatest(String(req.params.teamId));
+    if (!latest) {
+      res.status(404).json({ error: "no ideas have been generated for this team yet" });
+      return;
+    }
+    res.status(200).json(latest);
   });
 
   return router;
