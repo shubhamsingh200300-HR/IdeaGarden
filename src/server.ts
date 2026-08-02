@@ -7,6 +7,7 @@ import { loadTeamMappings } from "./teams/loadTeamMappings.js";
 import { EncryptedFileSystemStore } from "./uploads/rawFileStore.js";
 import { DerivedDataStore } from "./uploads/derivedDataStore.js";
 import { FileAuditLog } from "./uploads/auditLog.js";
+import { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 
 // Swapping InMemoryTeamMappingStore for a real on-prem-backed store is a
 // separate, later concern — this ticket establishes the interface
@@ -20,6 +21,11 @@ const ingestDeps = {
   auditLog: new FileAuditLog(join(storageConfig.baseDir, "audit.log")),
 };
 
+const requestIntakeStore = new RequestIntakeStore(
+  join(storageConfig.baseDir, "requests"),
+  storageConfig.encryptionKey,
+);
+
 const port = Number(process.env.PORT ?? 3000);
 
 const app = buildApp({
@@ -28,6 +34,7 @@ const app = buildApp({
   sessionSecret: loadSessionSecret(),
   devLoginEnabled: process.env.DEV_LOGIN_ENABLED === "true",
   ingestDeps,
+  requestIntakeStore,
 });
 
 app.listen(port, () => {

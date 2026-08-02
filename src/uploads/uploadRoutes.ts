@@ -1,6 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer, { MulterError } from "multer";
 import { requireAuth } from "../auth/authMiddleware.js";
+import { requireTeamAuthorization } from "../teams/requireTeamAuthorization.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
 import { ingestUpload, type IngestDeps } from "./ingestUpload.js";
 import type { SourceType } from "./rawFileStore.js";
@@ -12,19 +13,6 @@ function respond(res: Response, result: Awaited<ReturnType<typeof ingestUpload>>
   if (result.status === "rejected") res.status(400).json(result);
   else if (result.status === "needs-confirmation") res.status(422).json(result);
   else res.status(200).json(result);
-}
-
-/** Runs after requireAuth, before multer - an unauthorized request never gets its body buffered. */
-function requireTeamAuthorization(teamMappingStore: TeamMappingStore) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const hrbpId = req.session.hrbpId!;
-    const teamId = String(req.params.teamId);
-    if (!teamMappingStore.isAuthorized(hrbpId, teamId)) {
-      res.status(403).json({ error: "forbidden" });
-      return;
-    }
-    next();
-  };
 }
 
 /** Wraps multer so a file-too-large (or other Multer) error becomes a clean 4xx, not a generic 500. */

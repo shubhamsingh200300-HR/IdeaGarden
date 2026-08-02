@@ -8,6 +8,8 @@ import type { TeamMappingStore } from "./teams/teamMappingStore.js";
 import { buildPagesRouter } from "./pages/pagesRoutes.js";
 import { buildUploadRoutes } from "./uploads/uploadRoutes.js";
 import type { IngestDeps } from "./uploads/ingestUpload.js";
+import { buildRequestRoutes } from "./requests/requestRoutes.js";
+import type { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 
 export interface AppDeps {
   oidcClient: OidcClient;
@@ -21,6 +23,8 @@ export interface AppDeps {
   devLoginEnabled?: boolean;
   /** Omit to run without upload endpoints mounted (e.g. tests that don't need them). */
   ingestDeps?: IngestDeps;
+  /** Omit to run without request-intake endpoints mounted (e.g. tests that don't need them). */
+  requestIntakeStore?: RequestIntakeStore;
 }
 
 export function buildApp({
@@ -29,6 +33,7 @@ export function buildApp({
   sessionSecret,
   devLoginEnabled = false,
   ingestDeps,
+  requestIntakeStore,
 }: AppDeps): Express {
   const app = express();
 
@@ -49,6 +54,9 @@ export function buildApp({
   app.use("/api/teams", buildTeamsRouter(teamMappingStore));
   if (ingestDeps) {
     app.use("/api/teams", buildUploadRoutes(ingestDeps, teamMappingStore));
+  }
+  if (requestIntakeStore) {
+    app.use("/api/teams", buildRequestRoutes(requestIntakeStore, teamMappingStore));
   }
   app.use("/", buildPagesRouter(teamMappingStore, devLoginEnabled));
 
