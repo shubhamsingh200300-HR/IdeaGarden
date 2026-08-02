@@ -4,7 +4,13 @@
 
 **Blocked by:** 01 (Foundation: Knox SSO + team model)
 
-**Status:** ready-for-agent
+**Status:** implemented (commit fec481a)
+
+**Implementation note:** built as `src/uploads/*` — xlsx parsing, column classification, PII scrubbing (regex + `compromise`-based local name detection with confidence quarantine), AES-256-GCM-encrypted raw/derived storage, audit-logged retention, and three per-source-type upload routes. 113 tests total, all passing.
+
+**Caught and fixed by two-round code review:** the most serious was PII scrubbing only applying to free-text-classified columns, letting a short "Manager Name" or "Contact Phone" column leak raw PII into the supposedly de-identified derived tier — now regex redaction applies to every column and full name scrubbing applies to any identity-labeled header regardless of classification. Also fixed: a column-classifier bug where small row counts made a uniqueness signal unreliable; auth now runs before file buffering; oversized uploads return a clean 4xx instead of a 500; broadened phone-number regex.
+
+**Disclosed, not fixed (residual limitations):** `compromise`'s name detection has real false negatives beyond just low-confidence cases — some names go entirely undetected; it only tags person names, not other entity types; the employee-ID regex format is an unconfirmed guess; encryption-in-transit is a deployment-layer (TLS) concern this code can't provide.
 
 - [ ] HRBP can upload a `.xlsx` file for a specific team via a dedicated upload path per source type (annual survey / pulse survey / exit data — separate upload actions, not one generic uploader)
 - [ ] Columns are classified as structured vs. free-text using a deterministic, on-prem, rule-based heuristic (header keywords + data-shape signals) — no fixed schema assumed, no model call for this step
