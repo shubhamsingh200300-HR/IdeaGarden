@@ -1,76 +1,33 @@
-import { randomUUID } from "node:crypto";
-import express, { Router, type NextFunction, type Request, type Response } from "express";
+import { Router } from "express";
 import { requireAuth } from "../auth/authMiddleware.js";
 import { requireTeamAuthorization } from "../teams/requireTeamAuthorization.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
-import { RequestIntakeStore, type RequestConstraints } from "./requestIntakeStore.js";
-
-const jsonBody = express.json();
-
-/** Scoped (not app-wide) so an unauthorized request never gets its body parsed - same reasoning as uploadRoutes.ts's multer ordering. */
-function parseJsonBody(req: Request, res: Response, next: NextFunction): void {
-  jsonBody(req, res, (err: unknown) => {
-    if (err) {
-      res.status(400).json({ error: "malformed request body" });
-      return;
-    }
-    next();
-  });
-}
-
-type ConstraintsValidation = { ok: true; constraints: RequestConstraints } | { ok: false; field: string };
-
-/** Missing constraint fields default to "" (optional); a field that's present but not a string is rejected, not silently dropped. */
-function validateConstraints(input: unknown): ConstraintsValidation {
-  const raw = (input ?? {}) as Record<string, unknown>;
-  const constraints: RequestConstraints = { budget: "", time: "", headcountLogistics: "" };
-
-  for (const field of ["budget", "time", "headcountLogistics"] as const) {
-    if (field in raw) {
-      if (typeof raw[field] !== "string") return { ok: false, field };
-      constraints[field] = raw[field];
-    }
-  }
-
-  return { ok: true, constraints };
-}
+import { RequestIntakeStore } from "./requestIntakeStore.js";
+import { managerLinkFor } from "./managerLink.js";
 
 /**
- * Ticket 04's manager-input-relay assumption: the HRBP enters the manager's
- * free-text context and constraints on their behalf during intake, since
- * managers never use the platform directly (content spec ticket 002/008).
+ * HRBP-facing: trigger an invite, check its status. The manager submits
+ * separately, through managerRoutes.ts's unauthenticated-but-token-gated
+ * endpoint - the HRBP no longer types anything on the manager's behalf
+ * (ticket 10, superseding ticket 04's original HRBP-relay assumption).
  */
 export function buildRequestRoutes(
   requestIntakeStore: RequestIntakeStore,
   teamMappingStore: TeamMappingStore,
+  /** Omit to use RequestIntakeStore's own default (7 days) - actually operator-configurable via MANAGER_INVITE_EXPIRY_MS in server.ts, not just a theoretical parameter. */
+  inviteExpiryMs?: number,
 ): Router {
   const router = Router();
   const authorize = requireTeamAuthorization(teamMappingStore);
 
-  router.post("/:teamId/requests", requireAuth, authorize, parseJsonBody, (req, res) => {
-    const context = typeof req.body?.context === "string" ? req.body.context.trim() : "";
-    if (!context) {
-      res.status(400).json({ error: "context is required" });
-      return;
-    }
+  router.post("/:teamId/requests/invite", requireAuth, authorize, (req, res) => {
+    const teamId = String(req.params.teamId);
+    const invite =
+      inviteExpiryMs === undefined
+        ? requestIntakeStore.createInvite(teamId, req.session.hrbpId!)
+        : requestIntakeStore.createInvite(teamId, req.session.hrbpId!, inviteExpiryMs);
 
-    const constraintsResult = validateConstraints(req.body?.constraints);
-    if (!constraintsResult.ok) {
-      res.status(400).json({ error: `constraints.${constraintsResult.field} must be a string` });
-      return;
-    }
-
-    const generationRequest = {
-      id: randomUUID(),
-      teamId: String(req.params.teamId),
-      hrbpId: req.session.hrbpId!,
-      context,
-      constraints: constraintsResult.constraints,
-      submittedAt: new Date().toISOString(),
-    };
-
-    requestIntakeStore.save(generationRequest);
-    res.status(201).json(generationRequest);
+    res.status(201).json({ ...invite, link: managerLinkFor(req, invite.token!) });
   });
 
   router.get("/:teamId/requests/latest", requireAuth, authorize, (req, res) => {

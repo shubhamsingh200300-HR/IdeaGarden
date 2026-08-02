@@ -9,6 +9,7 @@ import { buildPagesRouter } from "./pages/pagesRoutes.js";
 import { buildUploadRoutes } from "./uploads/uploadRoutes.js";
 import type { IngestDeps } from "./uploads/ingestUpload.js";
 import { buildRequestRoutes } from "./requests/requestRoutes.js";
+import { buildManagerRoutes } from "./requests/managerRoutes.js";
 import type { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 
 export interface AppDeps {
@@ -25,6 +26,8 @@ export interface AppDeps {
   ingestDeps?: IngestDeps;
   /** Omit to run without request-intake endpoints mounted (e.g. tests that don't need them). */
   requestIntakeStore?: RequestIntakeStore;
+  /** Omit to use RequestIntakeStore's own default manager-invite expiry (7 days). */
+  managerInviteExpiryMs?: number;
 }
 
 export function buildApp({
@@ -34,6 +37,7 @@ export function buildApp({
   devLoginEnabled = false,
   ingestDeps,
   requestIntakeStore,
+  managerInviteExpiryMs,
 }: AppDeps): Express {
   const app = express();
 
@@ -56,7 +60,8 @@ export function buildApp({
     app.use("/api/teams", buildUploadRoutes(ingestDeps, teamMappingStore));
   }
   if (requestIntakeStore) {
-    app.use("/api/teams", buildRequestRoutes(requestIntakeStore, teamMappingStore));
+    app.use("/api/teams", buildRequestRoutes(requestIntakeStore, teamMappingStore, managerInviteExpiryMs));
+    app.use("/manager/requests", buildManagerRoutes(requestIntakeStore));
   }
   app.use("/", buildPagesRouter(teamMappingStore, devLoginEnabled));
 

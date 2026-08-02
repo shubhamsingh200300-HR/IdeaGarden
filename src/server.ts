@@ -27,6 +27,9 @@ const requestIntakeStore = new RequestIntakeStore(
 );
 
 const port = Number(process.env.PORT ?? 3000);
+const managerInviteExpiryMs = process.env.MANAGER_INVITE_EXPIRY_MS
+  ? Number(process.env.MANAGER_INVITE_EXPIRY_MS)
+  : undefined;
 
 const app = buildApp({
   oidcClient: new KnoxOidcClient(loadKnoxConfig()),
@@ -35,6 +38,7 @@ const app = buildApp({
   devLoginEnabled: process.env.DEV_LOGIN_ENABLED === "true",
   ingestDeps,
   requestIntakeStore,
+  managerInviteExpiryMs,
 });
 
 app.listen(port, () => {

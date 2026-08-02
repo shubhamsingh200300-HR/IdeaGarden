@@ -18,7 +18,7 @@ class FakeOidcClient implements OidcClient {
   }
 }
 
-describe("request intake routes", () => {
+describe("request intake routes (HRBP-facing)", () => {
   let dir: string;
 
   function buildTestApp() {
@@ -50,109 +50,116 @@ describe("request intake routes", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("rejects an unauthenticated submission", async () => {
-    const { app } = buildTestApp();
-    const res = await request(app)
-      .post("/api/teams/team-a/requests")
-      .send({ context: "Team morale is a bit low after a rough launch." });
-
-    expect(res.status).toBe(401);
-  });
-
-  it("rejects a submission for a team the HRBP isn't authorized for", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    const res = await agent
-      .post("/api/teams/team-c/requests")
-      .send({ context: "Some context." });
-
-    expect(res.status).toBe(403);
-  });
-
-  it("rejects a submission with no context", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    const res = await agent.post("/api/teams/team-a/requests").send({ context: "" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("submits a request with context and constraints, retrievable scoped to the correct team", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    const submitRes = await agent.post("/api/teams/team-a/requests").send({
-      context: "The team shipped a rough launch last quarter and morale is a bit low.",
-      constraints: { budget: "up to 50,000 INR", time: "half a day max", headcountLogistics: "team of 8" },
+  describe("POST /:teamId/requests/invite", () => {
+    it("rejects an unauthenticated invite creation", async () => {
+      const { app } = buildTestApp();
+      const res = await request(app).post("/api/teams/team-a/requests/invite");
+      expect(res.status).toBe(401);
     });
 
-    expect(submitRes.status).toBe(201);
-    expect(submitRes.body.teamId).toBe("team-a");
-    expect(submitRes.body.hrbpId).toBe("hrbp-1");
+    it("rejects invite creation for a team the HRBP isn't authorized for", async () => {
+      const { app } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
 
-    const getRes = await agent.get("/api/teams/team-a/requests/latest");
-    expect(getRes.status).toBe(200);
-    expect(getRes.body.context).toContain("rough launch");
-    expect(getRes.body.constraints.budget).toBe("up to 50,000 INR");
+      const res = await agent.post("/api/teams/team-c/requests/invite");
+      expect(res.status).toBe(403);
+    });
+
+    it("creates a pending invite and returns a manager link", async () => {
+      const { app } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+
+      const res = await agent.post("/api/teams/team-a/requests/invite");
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe("pending");
+      expect(res.body.teamId).toBe("team-a");
+      expect(res.body.link).toContain("/manager/requests/");
+      expect(res.body.link).toContain(res.body.token);
+    });
   });
 
-  it("submits successfully with no constraints given, defaulting them to empty", async () => {
+  describe("GET /:teamId/requests/latest", () => {
+    it("rejects an unauthenticated request", async () => {
+      const { app } = buildTestApp();
+      const res = await request(app).get("/api/teams/team-a/requests/latest");
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects retrieval for a team the HRBP isn't authorized for", async () => {
+      const { app } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+
+      const res = await agent.get("/api/teams/team-c/requests/latest");
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 404 when no invite has been created for the team yet", async () => {
+      const { app } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+
+      const res = await agent.get("/api/teams/team-a/requests/latest");
+      expect(res.status).toBe(404);
+    });
+
+    it("reflects pending status right after an invite is created", async () => {
+      const { app } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      await agent.post("/api/teams/team-a/requests/invite");
+
+      const res = await agent.get("/api/teams/team-a/requests/latest");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("pending");
+    });
+
+    it("reflects submitted status once the manager has responded", async () => {
+      const { app, requestIntakeStore } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      const inviteRes = await agent.post("/api/teams/team-a/requests/invite");
+
+      requestIntakeStore.submitByToken(inviteRes.body.token, "Manager's context here.", {
+        budget: "",
+        time: "",
+        headcountLogistics: "",
+      });
+
+      const res = await agent.get("/api/teams/team-a/requests/latest");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("submitted");
+      expect(res.body.context).toBe("Manager's context here.");
+    });
+  });
+
+  it("full flow end to end over real HTTP: HRBP invites, manager submits via the link, HRBP sees it submitted", async () => {
     const { app } = buildTestApp();
     const agent = request.agent(app);
     await loginAs(agent, "hrbp-1");
 
-    const res = await agent.post("/api/teams/team-a/requests").send({ context: "Just some context." });
+    const inviteRes = await agent.post("/api/teams/team-a/requests/invite");
+    expect(inviteRes.status).toBe(201);
+    const managerPath = new URL(inviteRes.body.link).pathname;
 
-    expect(res.status).toBe(201);
-    expect(res.body.constraints).toEqual({ budget: "", time: "", headcountLogistics: "" });
-  });
+    const submitRes = await request(app)
+      .post(managerPath)
+      .type("form")
+      .send({
+        context: "The team shipped a rough launch last quarter and morale is a bit low.",
+        budget: "up to 50,000 INR",
+        time: "half a day max",
+        headcountLogistics: "team of 8",
+      });
+    expect(submitRes.status).toBe(200);
 
-  it("rejects a non-string constraint field instead of silently dropping it", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    const res = await agent
-      .post("/api/teams/team-a/requests")
-      .send({ context: "Some context.", constraints: { budget: 50000 } });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/budget/i);
-  });
-
-  it("checks team authorization before parsing the request body (403 even with a body too large to parse cheaply)", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    // hrbp-1 isn't authorized for team-c - this must 403 regardless of body content.
-    const res = await agent
-      .post("/api/teams/team-c/requests")
-      .send({ context: "x".repeat(1000), constraints: { budget: "x".repeat(1000) } });
-
-    expect(res.status).toBe(403);
-  });
-
-  it("rejects retrieval for a team the HRBP isn't authorized for", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    const res = await agent.get("/api/teams/team-c/requests/latest");
-    expect(res.status).toBe(403);
-  });
-
-  it("returns 404 when no request has been submitted for the team yet", async () => {
-    const { app } = buildTestApp();
-    const agent = request.agent(app);
-    await loginAs(agent, "hrbp-1");
-
-    const res = await agent.get("/api/teams/team-a/requests/latest");
-    expect(res.status).toBe(404);
+    const latestRes = await agent.get("/api/teams/team-a/requests/latest");
+    expect(latestRes.status).toBe(200);
+    expect(latestRes.body.status).toBe("submitted");
+    expect(latestRes.body.context).toContain("rough launch");
+    expect(latestRes.body.constraints.budget).toBe("up to 50,000 INR");
   });
 });
