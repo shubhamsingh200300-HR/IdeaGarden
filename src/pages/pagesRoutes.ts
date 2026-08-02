@@ -3,7 +3,10 @@ import { requireAuthPage } from "../auth/authMiddleware.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
 import { escapeHtml, layout } from "./html.js";
 
-export function buildPagesRouter(teamMappingStore: TeamMappingStore): Router {
+export function buildPagesRouter(
+  teamMappingStore: TeamMappingStore,
+  devLoginEnabled = false,
+): Router {
   const router = Router();
 
   router.get("/", (req, res) => {
@@ -11,11 +14,14 @@ export function buildPagesRouter(teamMappingStore: TeamMappingStore): Router {
       res.redirect("/dashboard");
       return;
     }
+    const devLoginLink = devLoginEnabled
+      ? `<p><a href="/auth/dev-login">Dev login (local testing only)</a></p>`
+      : "";
     res.send(
       layout(
         "Idea Generator",
         `<h1>Employee Engagement Idea Generator</h1>
-<p><a href="/auth/login">Log in with Samsung Knox</a></p>`,
+<p><a href="/auth/login">Log in with Samsung Knox</a></p>${devLoginLink}`,
       ),
     );
   });

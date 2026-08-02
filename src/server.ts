@@ -15,6 +15,7 @@ const app = buildApp({
   oidcClient: new KnoxOidcClient(loadKnoxConfig()),
   teamMappingStore: new InMemoryTeamMappingStore(mappings),
   sessionSecret: loadSessionSecret(),
+  devLoginEnabled: process.env.DEV_LOGIN_ENABLED === "true",
 });
 
 app.listen(port, () => {
