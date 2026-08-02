@@ -2,7 +2,7 @@
 
 **What to build:** Given a team's diagnosed signals, manager constraints, and retrieved corpus examples, the platform generates candidate initiatives, filters them through a hard gate, and ranks the survivors — producing the top 3-5.
 
-**Blocked by:** 05 (Signal analysis), 02 (Benchmark corpus + on-prem retrieval), 04 (Request intake: manager context & constraints)
+**Blocked by:** 05 (Signal analysis), 02 (Benchmark corpus + on-prem retrieval), 10 (Manager input via tokenized invite link — supersedes 04's mechanism; a request must be `submitted`, not merely `pending`)
 
 **Status:** ready-for-agent
 
