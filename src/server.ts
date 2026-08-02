@@ -1,13 +1,24 @@
-import { loadKnoxConfig, loadSessionSecret } from "./config.js";
+import { join } from "node:path";
+import { loadKnoxConfig, loadSessionSecret, loadStorageConfig } from "./config.js";
 import { KnoxOidcClient } from "./auth/knoxOidcClient.js";
 import { buildApp } from "./app.js";
 import { InMemoryTeamMappingStore } from "./teams/teamMappingStore.js";
 import { loadTeamMappings } from "./teams/loadTeamMappings.js";
+import { EncryptedFileSystemStore } from "./uploads/rawFileStore.js";
+import { DerivedDataStore } from "./uploads/derivedDataStore.js";
+import { FileAuditLog } from "./uploads/auditLog.js";
 
 // Swapping InMemoryTeamMappingStore for a real on-prem-backed store is a
 // separate, later concern — this ticket establishes the interface
 // (TeamMappingStore) and a file-backed way to maintain it in the meantime.
 const mappings = loadTeamMappings(process.env.TEAM_MAPPINGS_PATH);
+
+const storageConfig = loadStorageConfig();
+const ingestDeps = {
+  rawFileStore: new EncryptedFileSystemStore(join(storageConfig.baseDir, "raw"), storageConfig.encryptionKey),
+  derivedDataStore: new DerivedDataStore(join(storageConfig.baseDir, "derived"), storageConfig.encryptionKey),
+  auditLog: new FileAuditLog(join(storageConfig.baseDir, "audit.log")),
+};
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -16,6 +27,7 @@ const app = buildApp({
   teamMappingStore: new InMemoryTeamMappingStore(mappings),
   sessionSecret: loadSessionSecret(),
   devLoginEnabled: process.env.DEV_LOGIN_ENABLED === "true",
+  ingestDeps,
 });
 
 app.listen(port, () => {

@@ -6,6 +6,8 @@ import type { OidcClient } from "./auth/oidcClient.js";
 import { buildTeamsRouter } from "./teams/teamsRoutes.js";
 import type { TeamMappingStore } from "./teams/teamMappingStore.js";
 import { buildPagesRouter } from "./pages/pagesRoutes.js";
+import { buildUploadRoutes } from "./uploads/uploadRoutes.js";
+import type { IngestDeps } from "./uploads/ingestUpload.js";
 
 export interface AppDeps {
   oidcClient: OidcClient;
@@ -17,6 +19,8 @@ export interface AppDeps {
    * own machine — never enable this in a real deployment.
    */
   devLoginEnabled?: boolean;
+  /** Omit to run without upload endpoints mounted (e.g. tests that don't need them). */
+  ingestDeps?: IngestDeps;
 }
 
 export function buildApp({
@@ -24,6 +28,7 @@ export function buildApp({
   teamMappingStore,
   sessionSecret,
   devLoginEnabled = false,
+  ingestDeps,
 }: AppDeps): Express {
   const app = express();
 
@@ -42,6 +47,9 @@ export function buildApp({
     app.use("/auth", buildDevAuthRouter());
   }
   app.use("/api/teams", buildTeamsRouter(teamMappingStore));
+  if (ingestDeps) {
+    app.use("/api/teams", buildUploadRoutes(ingestDeps, teamMappingStore));
+  }
   app.use("/", buildPagesRouter(teamMappingStore, devLoginEnabled));
 
   return app;

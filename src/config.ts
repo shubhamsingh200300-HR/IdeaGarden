@@ -37,3 +37,18 @@ export function loadKnoxConfig(): KnoxConfig {
 export function loadSessionSecret(): string {
   return requireEnv("SESSION_SECRET");
 }
+
+export interface StorageConfig {
+  baseDir: string;
+  encryptionKey: Buffer;
+}
+
+/** STORAGE_ENCRYPTION_KEY must be a 32-byte key, hex-encoded (64 hex characters), for AES-256-GCM. */
+export function loadStorageConfig(): StorageConfig {
+  const keyHex = requireEnv("STORAGE_ENCRYPTION_KEY");
+  const encryptionKey = Buffer.from(keyHex, "hex");
+  if (encryptionKey.length !== 32) {
+    throw new Error("STORAGE_ENCRYPTION_KEY must be a 32-byte key, hex-encoded (64 hex characters)");
+  }
+  return { baseDir: process.env.STORAGE_DIR ?? "./data", encryptionKey };
+}

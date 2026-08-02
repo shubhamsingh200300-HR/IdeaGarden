@@ -25,13 +25,17 @@
   },
   "homepage": "https://github.com/shubhamsingh200300-HR/IdeaGarden#readme",
   "dependencies": {
+    "compromise": "^14.16.0",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "jose": "^6.2.7"
+    "jose": "^6.2.7",
+    "multer": "^2.2.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.19.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^26.1.2",
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^4.1.10",
