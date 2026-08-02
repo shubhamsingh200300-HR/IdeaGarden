@@ -4,7 +4,11 @@
 
 **Blocked by:** 01 (Foundation: Knox SSO + team model)
 
-**Status:** ready-for-agent
+**Status:** implemented (commit ae8e82f)
+
+**Implementation note:** built as `src/requests/*` — an encrypted, per-team `RequestIntakeStore` and two routes (submit, get-latest). 14 tests, all passing. The "assumption to confirm" checkbox is still genuinely open — the code documents the HRBP-relay assumption but it has not been confirmed with a stakeholder.
+
+**Caught and fixed by code review:** `express.json()` was mounted globally in `app.ts`, so unauthenticated requests to any route got their body parsed before auth ran — the same class of gap ticket 03 fixed for file uploads, reintroduced here for JSON. Now scoped to just this route, after auth + team authorization. Also fixed: non-string constraint fields were silently coerced to empty string instead of rejected; and a duplicated authorization middleware was extracted to `src/teams/requireTeamAuthorization.ts`, shared with the upload routes.
 
 - [ ] HRBP selects a team they're mapped to and enters free-text context (situational narrative) on the manager's behalf
 - [ ] HRBP enters constraints the generator must respect: budget, time, and headcount/logistics limits
