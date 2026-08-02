@@ -1,0 +1,43 @@
+{
+  "name": "emp-engagement-ideas",
+  "version": "1.0.0",
+  "description": "Employee engagement idea generator",
+  "main": "src/server.ts",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shubhamsingh200300-HR/IdeaGarden.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/shubhamsingh200300-HR/IdeaGarden/issues"
+  },
+  "homepage": "https://github.com/shubhamsingh200300-HR/IdeaGarden#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "jose": "^6.2.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
+    "@types/node": "^26.1.2",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.4",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
