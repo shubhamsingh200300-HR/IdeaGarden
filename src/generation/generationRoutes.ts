@@ -2,6 +2,7 @@ import express, { Router, type NextFunction, type Request, type Response } from 
 import { requireAuth } from "../auth/authMiddleware.js";
 import { requireTeamAuthorization } from "../teams/requireTeamAuthorization.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
+import { adoptIdea } from "../tracking/adoptIdea.js";
 import { runGeneration, type RunGenerationDeps } from "./runGeneration.js";
 
 const jsonBody = express.json();
@@ -50,6 +51,22 @@ export function buildGenerationRoutes(
       return;
     }
     res.status(200).json(latest);
+  });
+
+  router.post("/:teamId/ideas/adopt", requireAuth, authorize, parseJsonBody, async (req, res) => {
+    const teamId = String(req.params.teamId);
+    const ideaIndex = Number(req.body?.ideaIndex);
+    if (!Number.isInteger(ideaIndex) || ideaIndex < 0) {
+      res.status(400).json({ error: "ideaIndex must be a non-negative integer" });
+      return;
+    }
+
+    const outcome = await adoptIdea(deps, teamId, ideaIndex);
+    if (outcome.status === "not-found") {
+      res.status(404).json({ error: "no idea at that index in this team's latest batch" });
+      return;
+    }
+    res.status(201).json(outcome.record);
   });
 
   return router;

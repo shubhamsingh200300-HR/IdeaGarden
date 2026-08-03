@@ -15,6 +15,7 @@ import { buildAnalysisRoutes, type AnalysisDeps } from "./analysis/analysisRoute
 import { buildGenerationRoutes } from "./generation/generationRoutes.js";
 import { buildIdeaPagesRoutes } from "./generation/ideaPagesRoutes.js";
 import type { RunGenerationDeps } from "./generation/runGeneration.js";
+import type { RecordCycleOutcomesDeps } from "./tracking/recordCycleOutcomes.js";
 
 export interface AppDeps {
   oidcClient: OidcClient;
@@ -36,6 +37,8 @@ export interface AppDeps {
   analysisDeps?: AnalysisDeps;
   /** Omit to run without the idea-generation endpoints mounted (e.g. tests that don't need them). */
   generationDeps?: RunGenerationDeps;
+  /** Omit to run without ticket 08's automatic next-cycle comparison on upload (e.g. tests that don't need it). */
+  trackingDeps?: RecordCycleOutcomesDeps;
 }
 
 export function buildApp({
@@ -48,6 +51,7 @@ export function buildApp({
   managerInviteExpiryMs,
   analysisDeps,
   generationDeps,
+  trackingDeps,
 }: AppDeps): Express {
   const app = express();
 
@@ -67,7 +71,7 @@ export function buildApp({
   }
   app.use("/api/teams", buildTeamsRouter(teamMappingStore));
   if (ingestDeps) {
-    app.use("/api/teams", buildUploadRoutes(ingestDeps, teamMappingStore));
+    app.use("/api/teams", buildUploadRoutes(ingestDeps, teamMappingStore, trackingDeps));
   }
   if (requestIntakeStore) {
     app.use("/api/teams", buildRequestRoutes(requestIntakeStore, teamMappingStore, managerInviteExpiryMs));

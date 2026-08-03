@@ -19,6 +19,7 @@ import { loadCorpus } from "./corpus/loadCorpus.js";
 import { OnPremVectorStore } from "./corpus/vectorStore.js";
 import { EnterpriseIdeaLlmClient } from "./generation/enterpriseIdeaLlmClient.js";
 import { GeneratedIdeasStore } from "./generation/generatedIdeasStore.js";
+import { AdoptedIdeaStore } from "./tracking/adoptedIdeaStore.js";
 
 // Swapping InMemoryTeamMappingStore for a real on-prem-backed store is a
 // separate, later concern — this ticket establishes the interface
@@ -43,6 +44,8 @@ const analysisDeps = {
   llmClient: themeLlmClient,
 };
 
+const adoptedIdeaStore = new AdoptedIdeaStore(join(storageConfig.baseDir, "adopted-ideas"), storageConfig.encryptionKey);
+
 const generationDeps = {
   requestIntakeStore,
   derivedDataStore: ingestDeps.derivedDataStore,
@@ -50,7 +53,10 @@ const generationDeps = {
   vectorStore: new OnPremVectorStore(loadCorpus()),
   ideaLlmClient: new EnterpriseIdeaLlmClient(loadIdeaGenerationLlmConfig()),
   themeLlmClient,
+  adoptedIdeaStore,
 };
+
+const trackingDeps = { adoptedIdeaStore, themeLlmClient };
 
 const port = Number(process.env.PORT ?? 3000);
 const managerInviteExpiryMs = process.env.MANAGER_INVITE_EXPIRY_MS
@@ -67,6 +73,7 @@ const app = buildApp({
   managerInviteExpiryMs,
   analysisDeps,
   generationDeps,
+  trackingDeps,
 });
 
 app.listen(port, () => {

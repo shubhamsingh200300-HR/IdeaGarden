@@ -12,6 +12,7 @@ import { DerivedDataStore } from "../uploads/derivedDataStore.js";
 import { OnPremVectorStore } from "../corpus/vectorStore.js";
 import type { CorpusEntry } from "../corpus/parseBenchmarkCorpus.js";
 import type { LlmClient, Theme } from "../analysis/llmClient.js";
+import { AdoptedIdeaStore } from "../tracking/adoptedIdeaStore.js";
 import { GeneratedIdeasStore } from "./generatedIdeasStore.js";
 import type { GeneratedIdeaDraft, IdeaGenerationInput, IdeaLlmClient } from "./ideaLlmClient.js";
 
@@ -88,6 +89,7 @@ describe("POST /:teamId/ideas/generate", () => {
     ]);
     const ideaLlmClient = new FakeIdeaLlmClient({ "career progression clarity": ideaDraft() });
     const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
+    const adoptedIdeaStore = new AdoptedIdeaStore(join(dir, "adopted"), key);
 
     const app = buildApp({
       oidcClient: new FakeOidcClient(),
@@ -103,9 +105,10 @@ describe("POST /:teamId/ideas/generate", () => {
         vectorStore,
         ideaLlmClient,
         themeLlmClient,
+        adoptedIdeaStore,
       },
     });
-    return { app, requestIntakeStore, derivedDataStore, generatedIdeasStore };
+    return { app, requestIntakeStore, derivedDataStore, generatedIdeasStore, adoptedIdeaStore };
   }
 
   async function loginAs(agent: ReturnType<typeof request.agent>, email: string) {
@@ -210,6 +213,70 @@ describe("POST /:teamId/ideas/generate", () => {
     expect(res.body.candidateSignalCount).toBe(1);
   });
 
+  describe("POST /:teamId/ideas/adopt", () => {
+    async function generateForTeamA(app: ReturnType<typeof buildTestApp>["app"], requestIntakeStore: RequestIntakeStore, derivedDataStore: DerivedDataStore) {
+      const invite = requestIntakeStore.createInvite("team-a", "hrbp-1");
+      requestIntakeStore.submitByToken(invite.token!, "Promotion criteria feel arbitrary.", {
+        budget: "",
+        time: "",
+        headcountLogistics: "",
+      });
+      derivedDataStore.save({
+        teamId: "team-a",
+        sourceType: "annual-survey",
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+        columnClassifications: { Comments: "free-text" },
+        rows: [{ status: "clean", values: { Comments: "Promotion criteria feel arbitrary." } }],
+      });
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      await agent.post("/api/teams/team-a/ideas/generate");
+      return agent;
+    }
+
+    it("rejects an unauthenticated request", async () => {
+      const { app } = buildTestApp();
+      const res = await request(app).post("/api/teams/team-a/ideas/adopt").send({ ideaIndex: 0 });
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a request for a team the HRBP isn't authorized for", async () => {
+      const { app } = buildTestApp();
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      const res = await agent.post("/api/teams/team-c/ideas/adopt").send({ ideaIndex: 0 });
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects a non-integer ideaIndex", async () => {
+      const { app, requestIntakeStore, derivedDataStore } = buildTestApp();
+      const agent = await generateForTeamA(app, requestIntakeStore, derivedDataStore);
+
+      const res = await agent.post("/api/teams/team-a/ideas/adopt").send({ ideaIndex: "not-a-number" });
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 404 when there's no idea at that index", async () => {
+      const { app, requestIntakeStore, derivedDataStore } = buildTestApp();
+      const agent = await generateForTeamA(app, requestIntakeStore, derivedDataStore);
+
+      const res = await agent.post("/api/teams/team-a/ideas/adopt").send({ ideaIndex: 99 });
+      expect(res.status).toBe(404);
+    });
+
+    it("marks an idea adopted and persists it to the adopted-ideas store", async () => {
+      const { app, requestIntakeStore, derivedDataStore, adoptedIdeaStore } = buildTestApp();
+      const agent = await generateForTeamA(app, requestIntakeStore, derivedDataStore);
+
+      const res = await agent.post("/api/teams/team-a/ideas/adopt").send({ ideaIndex: 0 });
+
+      expect(res.status).toBe(201);
+      expect(res.body.idea.title).toBe("Quarterly Promotion Calibration Council");
+      expect(res.body.baseline).toEqual({ count: 5, sentiment: "negative" });
+      expect(adoptedIdeaStore.list("team-a")).toHaveLength(1);
+    });
+  });
+
   it("returns a clean 502 (not a stack trace) when the upstream LLM call fails", async () => {
     const key = randomBytes(32);
     const teamMappingStore = new InMemoryTeamMappingStore([
@@ -224,6 +291,7 @@ describe("POST /:teamId/ideas/generate", () => {
     // No draft registered for this signal - FakeIdeaLlmClient.generateIdea throws, simulating an upstream failure.
     const failingIdeaLlmClient = new FakeIdeaLlmClient({});
     const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
+    const adoptedIdeaStore = new AdoptedIdeaStore(join(dir, "adopted"), key);
 
     const app = buildApp({
       oidcClient: new FakeOidcClient(),
@@ -238,6 +306,7 @@ describe("POST /:teamId/ideas/generate", () => {
         vectorStore,
         ideaLlmClient: failingIdeaLlmClient,
         themeLlmClient,
+        adoptedIdeaStore,
       },
     });
 

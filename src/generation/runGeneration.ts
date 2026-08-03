@@ -2,6 +2,7 @@ import type { LlmClient } from "../analysis/llmClient.js";
 import { analyzeSignals } from "../analysis/signalAnalysis.js";
 import type { OnPremVectorStore } from "../corpus/vectorStore.js";
 import type { RequestIntakeStore } from "../requests/requestIntakeStore.js";
+import type { AdoptedIdeaStore } from "../tracking/adoptedIdeaStore.js";
 import type { DerivedDataStore } from "../uploads/derivedDataStore.js";
 import { GeneratedIdeasStore } from "./generatedIdeasStore.js";
 import { generateIdeas, type GenerationResult } from "./generateIdeas.js";
@@ -15,6 +16,17 @@ export interface RunGenerationDeps {
   ideaLlmClient: IdeaLlmClient;
   /** Same theme-extraction client ticket 05's analysis route uses. */
   themeLlmClient: LlmClient;
+  /**
+   * Ticket 08's per-team adoption history, feeding the past-outcome ranking
+   * penalty (rank.ts) and the adopt action both ideaPagesRoutes.ts and
+   * generationRoutes.ts build on this same dependency bag. Required, not
+   * optional like ingestDeps/analysisDeps/generationDeps on AppDeps -
+   * those toggle whole independent subsystems on/off for tests that don't
+   * need them, but there's no coherent "generation without the ability to
+   * adopt" deployment once this ticket ships: the adopt routes are mounted
+   * unconditionally alongside generation itself.
+   */
+  adoptedIdeaStore: AdoptedIdeaStore;
 }
 
 export type RunGenerationResult =
@@ -45,11 +57,20 @@ export async function runGeneration(
 
   try {
     const analysis = await analyzeSignals(processed, deps.themeLlmClient);
+    const failedPriorIdeas = deps.adoptedIdeaStore
+      .list(teamId)
+      .filter((record) => record.outcome?.improved === false)
+      .map((record) => ({
+        title: record.idea.title,
+        description: record.idea.description,
+        signalAddressed: record.idea.signalAddressed,
+      }));
     const result = await generateIdeas(
       generationRequest,
       analysis,
       { vectorStore: deps.vectorStore, ideaLlmClient: deps.ideaLlmClient },
       additionalContext,
+      failedPriorIdeas,
     );
     deps.generatedIdeasStore.save(teamId, result);
     return { status: "ok", result };

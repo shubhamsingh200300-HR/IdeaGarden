@@ -8,6 +8,7 @@ import { DerivedDataStore } from "../uploads/derivedDataStore.js";
 import { OnPremVectorStore } from "../corpus/vectorStore.js";
 import type { CorpusEntry } from "../corpus/parseBenchmarkCorpus.js";
 import type { LlmClient, Theme } from "../analysis/llmClient.js";
+import { AdoptedIdeaStore } from "../tracking/adoptedIdeaStore.js";
 import { GeneratedIdeasStore } from "./generatedIdeasStore.js";
 import { runGeneration } from "./runGeneration.js";
 import type { GeneratedIdeaDraft, IdeaGenerationInput, IdeaLlmClient } from "./ideaLlmClient.js";
@@ -64,16 +65,26 @@ function ideaDraft(overrides: Partial<GeneratedIdeaDraft> = {}): GeneratedIdeaDr
 describe("runGeneration", () => {
   let dir: string;
 
-  function buildDeps(ideaLlmClient: IdeaLlmClient = new FakeIdeaLlmClient({ "career progression clarity": ideaDraft() })) {
+  function buildDeps(
+    ideaLlmClient: IdeaLlmClient = new FakeIdeaLlmClient({ "career progression clarity": ideaDraft() }),
+    themes: Theme[] = [{ label: "career progression clarity", count: 5, sentiment: "negative" }],
+  ) {
     const key = randomBytes(32);
     const requestIntakeStore = new RequestIntakeStore(join(dir, "requests"), key);
     const derivedDataStore = new DerivedDataStore(join(dir, "derived"), key);
     const generatedIdeasStore = new GeneratedIdeasStore(join(dir, "generated"), key);
-    const themeLlmClient = new FakeThemeLlmClient([
-      { label: "career progression clarity", count: 5, sentiment: "negative" },
-    ]);
+    const themeLlmClient = new FakeThemeLlmClient(themes);
     const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
-    return { requestIntakeStore, derivedDataStore, generatedIdeasStore, vectorStore, ideaLlmClient, themeLlmClient };
+    const adoptedIdeaStore = new AdoptedIdeaStore(join(dir, "adopted"), key);
+    return {
+      requestIntakeStore,
+      derivedDataStore,
+      generatedIdeasStore,
+      vectorStore,
+      ideaLlmClient,
+      themeLlmClient,
+      adoptedIdeaStore,
+    };
   }
 
   function seedReadyTeam(deps: ReturnType<typeof buildDeps>, teamId = "team-a") {
@@ -159,5 +170,47 @@ describe("runGeneration", () => {
 
     if (second.status !== "ok") throw new Error("expected ok");
     expect(deps.generatedIdeasStore.getLatest("team-a")).toEqual(second.result);
+  });
+
+  it("demotes a fresh idea that's a near-duplicate of a past adoption that didn't move its signal (ticket 08 feedback loop)", async () => {
+    const nearDuplicateOfFailure = ideaDraft({ feasibilityScore: 0.9 });
+    const differentApproach = ideaDraft({
+      signalAddressed: "recognition",
+      title: "Cross-Team Buddy Rotations",
+      description: "Pairs engineers across teams on a rotating basis to build cross-team relationships.",
+      feasibilityScore: 0.5,
+    });
+    const ideaLlmClient = new FakeIdeaLlmClient({
+      "career progression clarity": nearDuplicateOfFailure,
+      recognition: differentApproach,
+    });
+    const deps = buildDeps(ideaLlmClient, [
+      { label: "career progression clarity", count: 5, sentiment: "negative" },
+      { label: "recognition", count: 4, sentiment: "negative" },
+    ]);
+    seedReadyTeam(deps);
+    deps.adoptedIdeaStore.adopt(
+      "team-a",
+      {
+        title: "Quarterly Promotion Calibration Council",
+        description: "A standing panel reviews promotion packets against transparent criteria.",
+        signalAddressed: "career progression clarity",
+        structuralFormat: "Quarterly, standing panel",
+        ownerRole: "Engineering Director",
+        sponsorshipLevel: "org",
+        estimatedCostInr: 15000,
+        estimatedEffort: "4 hours per quarter",
+        successMetric: "Improved survey score",
+      },
+      { count: 5, sentiment: "negative" },
+    );
+    const failedRecordId = deps.adoptedIdeaStore.list("team-a")[0].id;
+    deps.adoptedIdeaStore.recordOutcome("team-a", failedRecordId, { count: 6, sentiment: "negative" }, false);
+
+    const result = await runGeneration(deps, "team-a");
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") throw new Error("expected ok");
+    expect(result.result.ideas[0].title).toBe("Cross-Team Buddy Rotations");
   });
 });

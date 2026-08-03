@@ -6,11 +6,20 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import type { AuthenticatedHrbp, OidcClient } from "../auth/oidcClient.js";
+import type { LlmClient, Theme } from "../analysis/llmClient.js";
 import { InMemoryTeamMappingStore } from "../teams/teamMappingStore.js";
+import { AdoptedIdeaStore } from "../tracking/adoptedIdeaStore.js";
 import { FileAuditLog } from "./auditLog.js";
 import { DerivedDataStore } from "./derivedDataStore.js";
 import { EncryptedFileSystemStore } from "./rawFileStore.js";
 import { buildXlsx } from "./testFixtures.js";
+
+class FakeThemeLlmClient implements LlmClient {
+  constructor(private readonly themes: Theme[]) {}
+  async extractThemes(): Promise<Theme[]> {
+    return this.themes;
+  }
+}
 
 class FakeOidcClient implements OidcClient {
   getAuthorizationUrl(state: string): string {
@@ -166,5 +175,108 @@ describe("upload routes", () => {
     expect(ingestDeps.derivedDataStore.getLatest("team-a", "pulse-survey")).toBeDefined();
     expect(ingestDeps.derivedDataStore.getLatest("team-a", "exit-data")).toBeDefined();
     expect(ingestDeps.derivedDataStore.getLatest("team-a", "annual-survey")).toBeUndefined();
+  });
+
+  describe("next-cycle outcome tracking (ticket 08)", () => {
+    function buildTrackedApp(themes: Theme[]) {
+      const key = randomBytes(32);
+      const teamMappingStore = new InMemoryTeamMappingStore([
+        { teamId: "team-a", teamName: "Backend Platform", hrbpId: "hrbp-1" },
+      ]);
+      const ingestDeps = {
+        rawFileStore: new EncryptedFileSystemStore(join(dir, "raw"), key),
+        derivedDataStore: new DerivedDataStore(join(dir, "derived"), key),
+        auditLog: new FileAuditLog(join(dir, "audit.log")),
+      };
+      const adoptedIdeaStore = new AdoptedIdeaStore(join(dir, "adopted"), key);
+      const themeLlmClient = new FakeThemeLlmClient(themes);
+      const app = buildApp({
+        oidcClient: new FakeOidcClient(),
+        teamMappingStore,
+        sessionSecret: "test-secret",
+        devLoginEnabled: true,
+        ingestDeps,
+        trackingDeps: { adoptedIdeaStore, themeLlmClient },
+      });
+      return { app, ingestDeps, adoptedIdeaStore };
+    }
+
+    it("automatically compares a pending adoption's targeted signal when the next annual-survey cycle is uploaded, with no separate HRBP action", async () => {
+      const { app, adoptedIdeaStore } = buildTrackedApp([
+        { label: "career progression clarity", count: 1, sentiment: "mixed" },
+      ]);
+      const record = adoptedIdeaStore.adopt(
+        "team-a",
+        {
+          title: "Quarterly Promotion Calibration Council",
+          description: "A standing panel reviews promotion packets against transparent criteria.",
+          signalAddressed: "career progression clarity",
+          structuralFormat: "Quarterly, standing panel",
+          ownerRole: "Engineering Director",
+          sponsorshipLevel: "org",
+          estimatedCostInr: 15000,
+          estimatedEffort: "4 hours per quarter",
+          successMetric: "Improved survey score",
+        },
+        { count: 5, sentiment: "negative" },
+      );
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      const buffer = await buildXlsx(
+        ["Comments"],
+        [["Still don't fully understand promotion criteria, but it's improving."]],
+      );
+
+      const res = await agent.post("/api/teams/team-a/uploads/annual-survey").attach("file", buffer, "cycle2.xlsx");
+
+      expect(res.status).toBe(200);
+      const [updated] = adoptedIdeaStore.list("team-a");
+      expect(updated.id).toBe(record.id);
+      expect(updated.outcome).toEqual({
+        comparedAt: expect.any(String),
+        after: { count: 1, sentiment: "mixed" },
+        improved: true,
+      });
+    });
+
+    it("does nothing when there's no pending adoption for the team", async () => {
+      const { app, adoptedIdeaStore } = buildTrackedApp([]);
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      const buffer = await buildXlsx(["Department"], [["Engineering"]]);
+
+      const res = await agent.post("/api/teams/team-a/uploads/annual-survey").attach("file", buffer, "survey.xlsx");
+
+      expect(res.status).toBe(200);
+      expect(adoptedIdeaStore.list("team-a")).toEqual([]);
+    });
+
+    it("doesn't run the comparison for pulse-survey or exit-data uploads", async () => {
+      const { app, adoptedIdeaStore } = buildTrackedApp([
+        { label: "career progression clarity", count: 1, sentiment: "mixed" },
+      ]);
+      adoptedIdeaStore.adopt(
+        "team-a",
+        {
+          title: "Quarterly Promotion Calibration Council",
+          description: "A standing panel reviews promotion packets against transparent criteria.",
+          signalAddressed: "career progression clarity",
+          structuralFormat: "Quarterly, standing panel",
+          ownerRole: "Engineering Director",
+          sponsorshipLevel: "org",
+          estimatedCostInr: 15000,
+          estimatedEffort: "4 hours per quarter",
+          successMetric: "Improved survey score",
+        },
+        { count: 5, sentiment: "negative" },
+      );
+      const agent = request.agent(app);
+      await loginAs(agent, "hrbp-1");
+      const buffer = await buildXlsx(["Department"], [["Engineering"]]);
+
+      await agent.post("/api/teams/team-a/uploads/pulse-survey").attach("file", buffer, "pulse.xlsx");
+
+      expect(adoptedIdeaStore.list("team-a")[0].outcome).toBeNull();
+    });
   });
 });

@@ -273,6 +273,53 @@ describe("generateIdeas", () => {
     expect(ideaLlmClient.receivedInputs[0].context).toContain("[NAME]");
   });
 
+  it("doesn't re-rank a highly similar failed prior idea to the top for the same team (ticket 08 feedback loop)", async () => {
+    const analysis: SignalAnalysisSummary = {
+      teamId: "team-a",
+      analyzedAt: "2026-01-01T00:00:00.000Z",
+      structuredDimensions: [],
+      freeTextThemes: [
+        { column: "Comments", label: "career progression clarity", count: 5, sentiment: "negative" },
+        { column: "Comments", label: "belonging", count: 5, sentiment: "negative" },
+      ],
+    };
+    // Near-duplicate of a past idea that didn't move the "career progression
+    // clarity" signal for this team, plus a differently-shaped idea for a
+    // different signal with a lower self-reported feasibility - without the
+    // feedback loop, the near-duplicate would still win on fit + feasibility.
+    const nearDuplicateOfFailure = draft({ feasibilityScore: 0.9 });
+    const differentApproach = draft({
+      signalAddressed: "belonging",
+      title: "Cross-Team Buddy Rotations",
+      description: "Pairs engineers across teams on a rotating basis to build cross-team relationships.",
+      feasibilityScore: 0.5,
+    });
+    const ideaLlmClient = new FakeIdeaLlmClient({
+      "career progression clarity": nearDuplicateOfFailure,
+      belonging: differentApproach,
+    });
+    const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
+    const failedPriorIdeas = [
+      {
+        title: "Quarterly Promotion Calibration Council",
+        description: "A standing panel reviews promotion packets against transparent criteria.",
+        signalAddressed: "career progression clarity",
+      },
+    ];
+
+    const withoutFeedback = await generateIdeas(request(), analysis, { vectorStore, ideaLlmClient });
+    expect(withoutFeedback.ideas[0].title).toBe("Quarterly Promotion Calibration Council");
+
+    const withFeedback = await generateIdeas(
+      request(),
+      analysis,
+      { vectorStore, ideaLlmClient },
+      undefined,
+      failedPriorIdeas,
+    );
+    expect(withFeedback.ideas[0].title).toBe("Cross-Team Buddy Rotations");
+  });
+
   it("retrieves corpus examples scoped to the target signal and passes them to the LLM client", async () => {
     const analysis: SignalAnalysisSummary = {
       teamId: "team-a",

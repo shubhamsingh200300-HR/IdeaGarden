@@ -3,8 +3,12 @@ import multer, { MulterError } from "multer";
 import { requireAuth } from "../auth/authMiddleware.js";
 import { requireTeamAuthorization } from "../teams/requireTeamAuthorization.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
+import { recordCycleOutcomes, type RecordCycleOutcomesDeps } from "../tracking/recordCycleOutcomes.js";
 import { ingestUpload, type IngestDeps } from "./ingestUpload.js";
 import type { SourceType } from "./rawFileStore.js";
+
+/** The only source type analysis/generation (and so ticket 08's tracking) ever reads - matches analysisRoutes.ts's DEFAULT_SOURCE_TYPE and runGeneration.ts's hardcoded lookup. */
+const TRACKED_SOURCE_TYPE: SourceType = "annual-survey";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB - generous for a survey export, not unbounded
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
@@ -35,7 +39,11 @@ function handleFileUpload(req: Request, res: Response, next: NextFunction): void
  * per the content spec's "dedicated upload path per source type, not one
  * generic uploader" - each just fixes which SourceType it ingests as.
  */
-export function buildUploadRoutes(ingestDeps: IngestDeps, teamMappingStore: TeamMappingStore): Router {
+export function buildUploadRoutes(
+  ingestDeps: IngestDeps,
+  teamMappingStore: TeamMappingStore,
+  trackingDeps?: RecordCycleOutcomesDeps,
+): Router {
   const router = Router();
 
   const handleUpload = (sourceType: SourceType) => [
@@ -51,6 +59,17 @@ export function buildUploadRoutes(ingestDeps: IngestDeps, teamMappingStore: Team
       }
 
       const result = await ingestUpload(ingestDeps, teamId, sourceType, req.file.buffer);
+
+      // Ticket 08: a fresh annual-survey cycle automatically compares any
+      // pending adoption's targeted signal, with no separate HRBP action -
+      // re-reads what ingestUpload.ts just saved rather than threading the
+      // processed rows back out of it, keeping the ingestion pipeline itself
+      // unaware that post-launch tracking exists.
+      if (result.status === "processed" && sourceType === TRACKED_SOURCE_TYPE && trackingDeps) {
+        const processed = ingestDeps.derivedDataStore.getLatest(teamId, sourceType);
+        if (processed) await recordCycleOutcomes(trackingDeps, teamId, processed);
+      }
+
       respond(res, result);
     },
   ] as const;

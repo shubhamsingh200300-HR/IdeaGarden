@@ -12,6 +12,7 @@ import { DerivedDataStore } from "../uploads/derivedDataStore.js";
 import { OnPremVectorStore } from "../corpus/vectorStore.js";
 import type { CorpusEntry } from "../corpus/parseBenchmarkCorpus.js";
 import type { LlmClient, Theme } from "../analysis/llmClient.js";
+import { AdoptedIdeaStore } from "../tracking/adoptedIdeaStore.js";
 import { GeneratedIdeasStore } from "./generatedIdeasStore.js";
 import type { GeneratedIdeaDraft, IdeaGenerationInput, IdeaLlmClient } from "./ideaLlmClient.js";
 
@@ -90,6 +91,7 @@ describe("idea pages (HTML)", () => {
     ]);
     const ideaLlmClient = new FakeIdeaLlmClient({ "career progression clarity": ideaDraft() });
     const vectorStore = new OnPremVectorStore([corpusEntry({ id: "a" })]);
+    const adoptedIdeaStore = new AdoptedIdeaStore(join(dir, "adopted"), key);
 
     const app = buildApp({
       oidcClient: new FakeOidcClient(),
@@ -104,9 +106,10 @@ describe("idea pages (HTML)", () => {
         vectorStore,
         ideaLlmClient,
         themeLlmClient,
+        adoptedIdeaStore,
       },
     });
-    return { app, requestIntakeStore, derivedDataStore, generatedIdeasStore, ideaLlmClient };
+    return { app, requestIntakeStore, derivedDataStore, generatedIdeasStore, ideaLlmClient, adoptedIdeaStore };
   }
 
   async function loginAs(agent: ReturnType<typeof request.agent>, email: string) {
@@ -265,5 +268,84 @@ describe("idea pages (HTML)", () => {
     expect(deps.ideaLlmClient.receivedInputs.at(-1)?.context).toContain("The team is now fully remote.");
     expect(deps.generatedIdeasStore.getLatest("team-a")).toBeDefined();
     expect(firstBatch).toBeDefined();
+  });
+
+  describe("marking an idea adopted (ticket 08)", () => {
+    it("shows a 'Mark as adopted' form for each rendered idea", async () => {
+      const deps = buildTestApp();
+      deps.generatedIdeasStore.save("team-a", {
+        ideas: [ideaDraft()].map((d) => ({
+          title: d.title,
+          description: d.description,
+          signalAddressed: d.signalAddressed,
+          structuralFormat: d.structuralFormat,
+          ownerRole: d.ownerRole!,
+          sponsorshipLevel: d.sponsorshipLevel!,
+          estimatedCostInr: d.estimatedCostInr,
+          estimatedEffort: d.estimatedEffort,
+          successMetric: d.successMetric,
+        })),
+        candidateSignalCount: 1,
+      });
+      const agent = request.agent(deps.app);
+      await loginAs(agent, "hrbp-1");
+
+      const res = await agent.get("/dashboard/teams/team-a/ideas");
+
+      expect(res.text).toContain("Mark as adopted");
+      expect(res.text).toContain('name="ideaIndex" value="0"');
+    });
+
+    it("marks the idea adopted, redirects back, and shows it under Adopted ideas with its baseline", async () => {
+      const deps = buildTestApp();
+      seedReadyTeam(deps);
+      const agent = request.agent(deps.app);
+      await loginAs(agent, "hrbp-1");
+      await agent.post("/dashboard/teams/team-a/ideas/generate").type("form").send({});
+
+      const postRes = await agent
+        .post("/dashboard/teams/team-a/ideas/adopt")
+        .type("form")
+        .send({ ideaIndex: "0" });
+
+      expect(postRes.status).toBe(303);
+      expect(postRes.headers.location).toBe("/dashboard/teams/team-a/ideas");
+      expect(deps.adoptedIdeaStore.list("team-a")).toHaveLength(1);
+
+      const pageRes = await agent.get("/dashboard/teams/team-a/ideas");
+      expect(pageRes.text).toContain("Adopted ideas");
+      expect(pageRes.text).toContain("Quarterly Promotion Calibration Council");
+      expect(pageRes.text).toContain("5 mention(s)");
+      expect(pageRes.text).toContain("awaiting the next survey cycle");
+    });
+
+    it("returns 404 for an out-of-range ideaIndex", async () => {
+      const deps = buildTestApp();
+      seedReadyTeam(deps);
+      const agent = request.agent(deps.app);
+      await loginAs(agent, "hrbp-1");
+      await agent.post("/dashboard/teams/team-a/ideas/generate").type("form").send({});
+
+      const res = await agent.post("/dashboard/teams/team-a/ideas/adopt").type("form").send({ ideaIndex: "99" });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("shows a completed before/after comparison once an outcome has been recorded", async () => {
+      const deps = buildTestApp();
+      seedReadyTeam(deps);
+      const agent = request.agent(deps.app);
+      await loginAs(agent, "hrbp-1");
+      await agent.post("/dashboard/teams/team-a/ideas/generate").type("form").send({});
+      await agent.post("/dashboard/teams/team-a/ideas/adopt").type("form").send({ ideaIndex: "0" });
+
+      const [record] = deps.adoptedIdeaStore.list("team-a");
+      deps.adoptedIdeaStore.recordOutcome("team-a", record.id, { count: 1, sentiment: "positive" }, true);
+
+      const res = await agent.get("/dashboard/teams/team-a/ideas");
+
+      expect(res.text).toContain("1 mention(s)");
+      expect(res.text).toContain("improved");
+    });
   });
 });

@@ -4,7 +4,7 @@ import type { GenerationRequest, RequestConstraints } from "../requests/requestI
 import { scrubText } from "../uploads/piiScrubber.js";
 import { passesGate } from "./gate.js";
 import type { GeneratedIdeaDraft, IdeaLlmClient, SponsorshipLevel } from "./ideaLlmClient.js";
-import { scoreIdea } from "./rank.js";
+import { scoreIdea, type FailedPriorIdea } from "./rank.js";
 
 /**
  * The manager's context/constraints come through ticket 10's public,
@@ -86,12 +86,19 @@ function toPublicCard(idea: GeneratedIdeaDraft): PublicIdeaCard {
  * It's blended in for this call only, never persisted to the stored
  * request - the manager's original submission (ticket 10) remains the
  * record of truth.
+ *
+ * `failedPriorIdeas` supports ticket 08's per-team feedback loop: past
+ * adoptions for this same team whose targeted signal didn't move next
+ * cycle. Every candidate is demoted (rank.ts), not excluded, in proportion
+ * to how similar it is to one of these - see rank.ts for why this is a
+ * soft ranking signal rather than a fifth gate.
  */
 export async function generateIdeas(
   request: GenerationRequest,
   analysis: SignalAnalysisSummary,
   deps: GenerateIdeasDeps,
   additionalContext?: string,
+  failedPriorIdeas: FailedPriorIdea[] = [],
 ): Promise<GenerationResult> {
   const candidateSignals = analysis.freeTextThemes.filter(
     (theme) => theme.sentiment === "negative" || theme.sentiment === "mixed",
@@ -126,6 +133,7 @@ export async function generateIdeas(
       targetSignal: theme.label,
       corpusExamplesUsed: corpusExampleRefs,
       corpusExamplesRequested: CORPUS_EXAMPLES_PER_SIGNAL,
+      failedPriorIdeas,
     });
     scored.push({ idea: draft, score });
   }

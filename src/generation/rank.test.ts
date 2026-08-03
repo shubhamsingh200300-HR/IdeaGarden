@@ -95,6 +95,31 @@ describe("scoreIdea", () => {
     expect(withoutExamples).toBeLessThan(withExamples);
   });
 
+  it("scores an idea near-identical to a past failed adoption for this team lower than an otherwise-similar idea with no such history", () => {
+    const failedPriorIdeas = [
+      {
+        title: "Quarterly Promotion Calibration Council",
+        description: "A standing cross-team panel reviews promotion packets against transparent criteria.",
+        signalAddressed: "career progression clarity",
+      },
+    ];
+    const nearDuplicate = draft(); // matches the failed prior idea almost verbatim
+    const differentApproach = draft({
+      title: "Public Leveling Rubric & Self-Assessment Tool",
+      description: "Publishes the leveling rubric and lets engineers self-assess against it before cycle reviews.",
+    });
+
+    const penalizedScore = scoreIdea(nearDuplicate, { ...baseCtx, failedPriorIdeas });
+    const unpenalizedScore = scoreIdea(differentApproach, { ...baseCtx, failedPriorIdeas });
+
+    expect(penalizedScore).toBeLessThan(scoreIdea(nearDuplicate, baseCtx));
+    expect(penalizedScore).toBeLessThan(unpenalizedScore);
+  });
+
+  it("applies no past-failure penalty when failedPriorIdeas is omitted", () => {
+    expect(scoreIdea(draft(), baseCtx)).toBe(scoreIdea(draft(), { ...baseCtx, failedPriorIdeas: [] }));
+  });
+
   it("weighs fit and feasibility more heavily than structural ambition and precedent grounding", () => {
     const fitAndFeasible = draft({ signalAddressed: "career progression clarity", feasibilityScore: 1, sponsorshipLevel: "team" });
     const ambitiousButMistargeted = draft({
