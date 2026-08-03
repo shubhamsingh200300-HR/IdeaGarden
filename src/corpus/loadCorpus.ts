@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { parseBenchmarkCorpus, type CorpusEntry } from "./parseBenchmarkCorpus.js";
 
-const DEFAULT_CORPUS_PATH = resolve(
+export const DEFAULT_CORPUS_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../wayfinder/research/benchmark-corpus.md",
 );

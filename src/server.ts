@@ -15,7 +15,8 @@ import { DerivedDataStore } from "./uploads/derivedDataStore.js";
 import { FileAuditLog } from "./uploads/auditLog.js";
 import { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 import { EnterpriseLlmClient } from "./analysis/enterpriseLlmClient.js";
-import { loadCorpus } from "./corpus/loadCorpus.js";
+import { CorpusProposalStore } from "./corpus/corpusProposalStore.js";
+import { DEFAULT_CORPUS_PATH, loadCorpus } from "./corpus/loadCorpus.js";
 import { OnPremVectorStore } from "./corpus/vectorStore.js";
 import { EnterpriseIdeaLlmClient } from "./generation/enterpriseIdeaLlmClient.js";
 import { GeneratedIdeasStore } from "./generation/generatedIdeasStore.js";
@@ -46,17 +47,28 @@ const analysisDeps = {
 
 const adoptedIdeaStore = new AdoptedIdeaStore(join(storageConfig.baseDir, "adopted-ideas"), storageConfig.encryptionKey);
 
+// Shared with corpusDeps below - ticket 09's approval flow mutates this
+// same instance in place (OnPremVectorStore.addEntry), so generation sees
+// an approved addition on its very next request with no restart.
+const vectorStore = new OnPremVectorStore(loadCorpus());
+
 const generationDeps = {
   requestIntakeStore,
   derivedDataStore: ingestDeps.derivedDataStore,
   generatedIdeasStore: new GeneratedIdeasStore(join(storageConfig.baseDir, "generated-ideas"), storageConfig.encryptionKey),
-  vectorStore: new OnPremVectorStore(loadCorpus()),
+  vectorStore,
   ideaLlmClient: new EnterpriseIdeaLlmClient(loadIdeaGenerationLlmConfig()),
   themeLlmClient,
   adoptedIdeaStore,
 };
 
 const trackingDeps = { adoptedIdeaStore, themeLlmClient };
+
+const corpusDeps = {
+  proposalStore: new CorpusProposalStore(join(storageConfig.baseDir, "corpus-proposals"), storageConfig.encryptionKey),
+  vectorStore,
+  corpusFilePath: DEFAULT_CORPUS_PATH,
+};
 
 const port = Number(process.env.PORT ?? 3000);
 const managerInviteExpiryMs = process.env.MANAGER_INVITE_EXPIRY_MS
@@ -74,6 +86,7 @@ const app = buildApp({
   analysisDeps,
   generationDeps,
   trackingDeps,
+  corpusDeps,
 });
 
 app.listen(port, () => {

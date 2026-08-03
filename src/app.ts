@@ -12,6 +12,7 @@ import { buildRequestRoutes } from "./requests/requestRoutes.js";
 import { buildManagerRoutes } from "./requests/managerRoutes.js";
 import type { RequestIntakeStore } from "./requests/requestIntakeStore.js";
 import { buildAnalysisRoutes, type AnalysisDeps } from "./analysis/analysisRoutes.js";
+import { buildCorpusRoutes, type CorpusRoutesDeps } from "./corpus/corpusRoutes.js";
 import { buildGenerationRoutes } from "./generation/generationRoutes.js";
 import { buildIdeaPagesRoutes } from "./generation/ideaPagesRoutes.js";
 import type { RunGenerationDeps } from "./generation/runGeneration.js";
@@ -39,6 +40,8 @@ export interface AppDeps {
   generationDeps?: RunGenerationDeps;
   /** Omit to run without ticket 08's automatic next-cycle comparison on upload (e.g. tests that don't need it). */
   trackingDeps?: RecordCycleOutcomesDeps;
+  /** Omit to run without ticket 09's corpus-growth proposal/review endpoints mounted (e.g. tests that don't need them). */
+  corpusDeps?: CorpusRoutesDeps;
 }
 
 export function buildApp({
@@ -52,6 +55,7 @@ export function buildApp({
   analysisDeps,
   generationDeps,
   trackingDeps,
+  corpusDeps,
 }: AppDeps): Express {
   const app = express();
 
@@ -79,6 +83,9 @@ export function buildApp({
   }
   if (analysisDeps) {
     app.use("/api/teams", buildAnalysisRoutes(analysisDeps, teamMappingStore));
+  }
+  if (corpusDeps) {
+    app.use("/api/corpus", buildCorpusRoutes(corpusDeps));
   }
   if (generationDeps) {
     app.use("/api/teams", buildGenerationRoutes(generationDeps, teamMappingStore));

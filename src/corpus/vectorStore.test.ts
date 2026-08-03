@@ -81,3 +81,51 @@ describe("OnPremVectorStore", () => {
     expect(results).toHaveLength(1);
   });
 });
+
+describe("OnPremVectorStore.addEntry (ticket 09: re-indexing on approval)", () => {
+  it("makes a newly added entry immediately retrievable, with no re-construction of the store", () => {
+    const store = new OnPremVectorStore([
+      entry({ id: "existing", primarySignal: "autonomy", structure: "An existing autonomy initiative." }),
+    ]);
+
+    expect(store.retrieveBySignal("growth/mastery", "design critique").map((e) => e.id)).toEqual([]);
+
+    store.addEntry(
+      entry({
+        id: "new-entry",
+        primarySignal: "growth/mastery",
+        structure: "A weekly design critique session.",
+      }),
+    );
+
+    expect(store.retrieveBySignal("growth/mastery", "design critique").map((e) => e.id)).toEqual(["new-entry"]);
+  });
+
+  it("still ranks correctly by similarity across old and newly added entries together", () => {
+    const store = new OnPremVectorStore([
+      entry({ id: "old-hackathon", primarySignal: "autonomy", structure: "An annual hackathon for engineers." }),
+    ]);
+    store.addEntry(
+      entry({ id: "new-hackathon", primarySignal: "autonomy", structure: "A quarterly hackathon for designers." }),
+    );
+
+    const results = store.retrieveBySignal("autonomy", "quarterly hackathon for designers");
+    expect(results[0].id).toBe("new-hackathon");
+  });
+
+  it("does not affect entries tagged with a different signal", () => {
+    const store = new OnPremVectorStore([entry({ id: "kudos", primarySignal: "recognition" })]);
+    store.addEntry(entry({ id: "new-entry", primarySignal: "autonomy" }));
+
+    expect(store.retrieveBySignal("recognition", "anything").map((e) => e.id)).toEqual(["kudos"]);
+  });
+});
+
+describe("OnPremVectorStore.listEntries", () => {
+  it("returns every entry currently in the store, including ones added after construction", () => {
+    const store = new OnPremVectorStore([entry({ id: "a" })]);
+    store.addEntry(entry({ id: "b" }));
+
+    expect(store.listEntries().map((e) => e.id)).toEqual(["a", "b"]);
+  });
+});

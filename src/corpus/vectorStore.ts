@@ -21,12 +21,33 @@ function taggedWithSignal(entry: CorpusEntry, signal: string): boolean {
  * similarity-ranked queries entirely in-process.
  */
 export class OnPremVectorStore {
-  private readonly entries: CorpusEntry[];
-  private readonly index: TfIdfIndex;
+  private entries: CorpusEntry[];
+  private index: TfIdfIndex;
 
   constructor(entries: CorpusEntry[]) {
-    this.entries = entries;
-    this.index = new TfIdfIndex(entries.map(entryText));
+    // Defensive copy, matching addEntry below - a caller mutating the array
+    // it passed in must not be able to desync this.entries from this.index.
+    this.entries = [...entries];
+    this.index = new TfIdfIndex(this.entries.map(entryText));
+  }
+
+  /**
+   * Ticket 09: re-indexing on approval, immediately - not on a periodic
+   * schedule. TF-IDF weights depend on the whole document set (textVector.ts),
+   * so "adding" one entry means rebuilding the index over all entries, not
+   * inserting into an existing one - cheap at this corpus's size. Mutates
+   * this instance in place rather than returning a new store, so every
+   * existing holder of this same OnPremVectorStore reference (e.g.
+   * RunGenerationDeps.vectorStore) sees the addition on its very next call,
+   * with no restart and no re-wiring.
+   */
+  addEntry(entry: CorpusEntry): void {
+    this.entries = [...this.entries, entry];
+    this.index = new TfIdfIndex(this.entries.map(entryText));
+  }
+
+  listEntries(): CorpusEntry[] {
+    return [...this.entries];
   }
 
   retrieveBySignal(signal: string, queryText: string, topK: number = DEFAULT_TOP_K): CorpusEntry[] {
