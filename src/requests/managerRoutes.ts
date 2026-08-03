@@ -1,5 +1,5 @@
 import express, { Router, type NextFunction, type Request, type Response } from "express";
-import { escapeHtml, layout } from "../pages/html.js";
+import { escapeHtml, layout, pageHeader } from "../pages/html.js";
 import { RequestIntakeStore, type RequestConstraints, type TokenCheckResult } from "./requestIntakeStore.js";
 
 const formBody = express.urlencoded({ extended: false });
@@ -11,33 +11,58 @@ const ERROR_STATUS: Record<Exclude<TokenCheckResult, { ok: true }>["reason"], nu
 };
 
 const ERROR_MESSAGE: Record<Exclude<TokenCheckResult, { ok: true }>["reason"], string> = {
-  "not-found": "This link is invalid or not found.",
-  expired: "This link has expired.",
-  "already-submitted": "This link has already been used.",
+  "not-found": "This link is invalid or not found. Ask your HRBP to send a fresh one.",
+  expired: "This link has expired. Ask your HRBP to send a fresh one.",
+  "already-submitted": "This link has already been used — your input was already recorded.",
 };
 
+function renderMessagePage(title: string, message: string): string {
+  return layout(title, `<div class="stack">${pageHeader("Idea Garden", title, message)}</div>`, {
+    narrow: true,
+    centered: true,
+  });
+}
+
 function renderError(res: Response, reason: Exclude<TokenCheckResult, { ok: true }>["reason"]): void {
-  res.status(ERROR_STATUS[reason]).send(
-    layout("Link not available", `<h1>Link not available</h1><p>${ERROR_MESSAGE[reason]}</p>`),
-  );
+  res.status(ERROR_STATUS[reason]).send(renderMessagePage("Link not available", ERROR_MESSAGE[reason]));
 }
 
 function renderForm(res: Response, token: string): void {
   res.status(200).send(
     layout(
       "Share your input",
-      `<h1>Share your input</h1>
-<form method="post" action="/manager/requests/${escapeHtml(token)}">
-  <label for="context">What's going on with your team?</label>
-  <textarea id="context" name="context" required></textarea>
-  <label for="budget">Budget</label>
-  <input id="budget" name="budget" type="text" />
-  <label for="time">Time</label>
-  <input id="time" name="time" type="text" />
-  <label for="headcountLogistics">Headcount / logistics</label>
-  <input id="headcountLogistics" name="headcountLogistics" type="text" />
-  <button type="submit">Submit</button>
-</form>`,
+      `<div class="stack">
+  ${pageHeader(
+    "For engineering managers",
+    "Share your input",
+    "Your HRBP is diagnosing what's really going on with your team and designing a structural response — not another team outing. A few honest sentences and a sense of your constraints is all this needs.",
+  )}
+  <form method="post" action="/manager/requests/${escapeHtml(token)}">
+    <div class="field">
+      <label class="label-question" for="context">What's going on with your team?</label>
+      <textarea id="context" name="context" required></textarea>
+    </div>
+    <div class="field">
+      <label>Constraints</label>
+      <div class="constraint-grid">
+        <div>
+          <label for="budget">Budget</label>
+          <input id="budget" name="budget" type="text" placeholder="up to ₹50,000" />
+        </div>
+        <div>
+          <label for="time">Time</label>
+          <input id="time" name="time" type="text" placeholder="half a day" />
+        </div>
+        <div>
+          <label for="headcountLogistics">Headcount / logistics</label>
+          <input id="headcountLogistics" name="headcountLogistics" type="text" placeholder="team of 8" />
+        </div>
+      </div>
+    </div>
+    <button class="btn" type="submit">Submit</button>
+  </form>
+</div>`,
+      { narrow: true },
     ),
   );
 }
@@ -51,7 +76,7 @@ function readConstraints(body: Record<string, unknown>): RequestConstraints {
 function parseFormBody(req: Request, res: Response, next: NextFunction): void {
   formBody(req, res, (err: unknown) => {
     if (err) {
-      res.status(400).send(layout("Bad request", "<h1>Bad request</h1><p>Could not read the submitted form.</p>"));
+      res.status(400).send(renderMessagePage("Bad request", "Could not read the submitted form."));
       return;
     }
     next();
@@ -80,7 +105,7 @@ export function buildManagerRoutes(requestIntakeStore: RequestIntakeStore): Rout
     if (!context) {
       res
         .status(400)
-        .send(layout("Missing context", "<h1>Missing context</h1><p>Please describe what's going on before submitting.</p>"));
+        .send(renderMessagePage("Missing context", "Please describe what's going on before submitting."));
       return;
     }
 
@@ -90,7 +115,9 @@ export function buildManagerRoutes(requestIntakeStore: RequestIntakeStore): Rout
       return;
     }
 
-    res.status(200).send(layout("Thanks", "<h1>Thanks!</h1><p>Your input has been submitted.</p>"));
+    res
+      .status(200)
+      .send(renderMessagePage("Thanks", "Thank you — your input has been submitted and your HRBP has been notified."));
   });
 
   return router;

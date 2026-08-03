@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { layout } from "../pages/html.js";
+import { layout, pageHeader } from "../pages/html.js";
 
 /**
  * Local-testing-only login: authenticates as whatever email is typed in,
@@ -14,12 +14,20 @@ export function buildDevAuthRouter(): Router {
     res.send(
       layout(
         "Dev login",
-        `<h1>Dev login</h1>
-<p>Local testing only — logs in as whatever email you enter, no verification.</p>
-<form method="post" action="/auth/dev-login">
-  <input type="email" name="email" placeholder="you@example.com" required />
-  <button type="submit">Log in</button>
-</form>`,
+        `<div class="stack">
+  ${pageHeader("Local testing only", "Dev login")}
+  <div class="banner banner--warning">
+    <p>Logs in as whatever email you enter, with no verification. Never available outside a developer's own machine.</p>
+  </div>
+  <form method="post" action="/auth/dev-login">
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" name="email" placeholder="you@example.com" required />
+    </div>
+    <button class="btn" type="submit">Log in</button>
+  </form>
+</div>`,
+        { narrow: true, centered: true },
       ),
     );
   });

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuthPage } from "../auth/authMiddleware.js";
 import type { TeamMappingStore } from "../teams/teamMappingStore.js";
-import { escapeHtml, layout } from "./html.js";
+import { escapeHtml, layout, pageHeader } from "./html.js";
 
 export function buildPagesRouter(
   teamMappingStore: TeamMappingStore,
@@ -14,31 +14,52 @@ export function buildPagesRouter(
       res.redirect("/dashboard");
       return;
     }
+
     const devLoginLink = devLoginEnabled
-      ? `<p><a href="/auth/dev-login">Dev login (local testing only)</a></p>`
+      ? `<p class="field-hint"><a href="/auth/dev-login">Dev login (local testing only)</a></p>`
       : "";
+
     res.send(
       layout(
-        "Idea Generator",
-        `<h1>Employee Engagement Idea Generator</h1>
-<p><a href="/auth/login">Log in with Samsung Knox</a></p>${devLoginLink}`,
+        "Idea Garden",
+        `<div class="landing stack">
+  ${pageHeader(
+    "Employee Engagement Idea Generator",
+    "Engagement initiatives, grounded in evidence.",
+    "Upload your team's culture survey. Idea Garden diagnoses the real signals and proposes structural initiatives modeled on Netflix, Atlassian, Google, and eleven other proven engineering cultures — never another team outing.",
+  )}
+  <a class="btn" href="/auth/login">Log in with Samsung Knox</a>
+  ${devLoginLink}
+</div>`,
+        { centered: true },
       ),
     );
   });
 
   router.get("/dashboard", requireAuthPage, (req, res) => {
-    const teams = teamMappingStore.getTeamsForHrbp(req.session.hrbpId!);
+    const hrbpId = req.session.hrbpId!;
+    const teams = teamMappingStore.getTeamsForHrbp(hrbpId);
+
     const teamsList =
       teams.length === 0
-        ? "<p>You have no teams assigned yet.</p>"
-        : `<ul>${teams
+        ? `<p class="empty-state">You have no teams assigned yet. Once a team is mapped to you, it will appear here.</p>`
+        : `<ul class="team-list">${teams
             .map(
               (team) =>
-                `<li><a href="/dashboard/teams/${escapeHtml(team.teamId)}/ideas">${escapeHtml(team.teamName)}</a></li>`,
+                `<li><a class="team-row" href="/dashboard/teams/${escapeHtml(team.teamId)}/ideas">
+                  <div class="card card--quiet">
+                    <span class="team-name">${escapeHtml(team.teamName)}</span>
+                    <span class="arrow" aria-hidden="true">&rarr;</span>
+                  </div>
+                </a></li>`,
             )
             .join("")}</ul>`;
 
-    res.send(layout("Dashboard", `<h1>Your teams</h1>${teamsList}`));
+    res.send(
+      layout("Dashboard", `${pageHeader("Your teams", "Dashboard")}${teamsList}`, {
+        headerMeta: escapeHtml(hrbpId),
+      }),
+    );
   });
 
   return router;

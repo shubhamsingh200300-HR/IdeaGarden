@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import session from "express-session";
 import { buildAuthRouter } from "./auth/authRoutes.js";
@@ -44,6 +46,9 @@ export interface AppDeps {
   corpusDeps?: CorpusRoutesDeps;
 }
 
+/** src/app.ts -> repo root -> public, whether running the TS source directly (dev, via tsx) or the compiled dist/app.js (tsconfig's rootDir/outDir keep both one level below the repo root). */
+const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../public");
+
 export function buildApp({
   oidcClient,
   teamMappingStore,
@@ -68,6 +73,7 @@ export function buildApp({
     }),
   );
   app.use(express.urlencoded({ extended: false }));
+  app.use("/assets", express.static(PUBLIC_DIR));
 
   app.use("/auth", buildAuthRouter(oidcClient));
   if (devLoginEnabled) {
